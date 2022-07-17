@@ -62,5 +62,7 @@ class FastaDataset(IterableDataset):
         self.data_generator = read_fasta(str(self.fasta_file_path))
 
     def __iter__(self):
-        seq = " ".join(list(next(self.data_generator)[-1]))
-        yield self.tokenizer(seq)
+
+        for line in self.data_generator:
+            seq = " ".join(list(line)[-1])
+            yield self.tokenizer(seq, return_tensors="pt")
