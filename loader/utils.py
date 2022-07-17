@@ -45,17 +45,64 @@ from torch.utils.data import ChainDataset
 from pathlib import Path
 
 
-def make_loaders(tokenizer,
-                 collate_fn,
+
+class DataCollector(object):
+    def __init__(self, tokenizer,
+                 mlm: bool = True,
+                 mlm_probability: float = 0.15):
+
+        self.tokenizer = tokenizer
+        self.mlm = mlm
+        self.mlm_probability = mlm_probability
+
+    def __call__(self, batch):
+    
+        batch_converter = self.tokenizer.get_batch_converter()
+        batch_labels, batch_strs, batch_tokens = batch_converter(batch)
+
+        labels = batch_tokens.clone()
+        # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
+        probability_matrix = torch.full(labels.shape, self.mlm_probability)
+        
+        special_tokens_mask = [
+            self.tokenizer.get_special_tokens_mask(
+                val, already_has_special_tokens=True)
+            for val in labels.tolist()
+        ]
+        special_tokens_mask = torch.tensor(special_tokens_mask,
+                                            dtype=torch.bool)
+
+
+        probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+
+        # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
+        indices_replaced = torch.bernoulli(torch.full(
+            labels.shape, 0.8)).bool() & masked_indices
+        batch_tokens[indices_replaced] = self.tokenizer.mask_idx
+
+        # 10% of the time, we replace masked input tokens with random word
+        indices_random = torch.bernoulli(torch.full(
+            labels.shape, 0.5)).bool() & masked_indices & ~indices_replaced
+        random_words = torch.randint(len(self.tokenizer),
+                                     labels.shape,
+                                     dtype=torch.long)
+        batch_tokens[indices_random] = random_words[indices_random]
+
+        return batch_tokens, labels
+
+
+def make_loaders(collate_fn,
                  train_dir='',
                  valid_dir='',
                  test_dir='',
                  batch_size=32,
-                 num_workers=4):
+                 num_workers=1):
     train_loader = None
     if train_dir and os.path.exists(train_dir):
 
-        train_loader = DataLoader(ChainDataset(FastaDataset(tokenizer, file_path) for file_path in Path(train_dir).glob("*.fasta")) ,
+        train_loader = DataLoader(ChainDataset([FastaDataset(file_path) for file_path in Path(train_dir).glob("*.fasta")]) ,
                                   batch_size=batch_size,
                                   shuffle=False,
                                   num_workers=num_workers,
@@ -63,18 +110,19 @@ def make_loaders(tokenizer,
 
     valid_loader = None
     if valid_dir and os.path.exists(valid_dir):
-        valid_loader = DataLoader(ChainDataset(
-            FastaDataset(tokenizer, file_path)
-            for file_path in Path(valid_dir).glob("*.fasta")),
+        valid_loader = DataLoader(ChainDataset([
+            FastaDataset(file_path)
+            for file_path in Path(valid_dir).glob("*.fasta")]),
                                   batch_size=batch_size,
                                   num_workers=num_workers,
                                   collate_fn=collate_fn)
     test_loader = None
     if test_dir and os.path.exists(test_dir):
         test_loader = DataLoader(ChainDataset(
-            FastaDataset(tokenizer, file_path)
+            FastaDataset(file_path)
             for file_path in Path(test_dir).glob("*.fasta")),
                                  batch_size=batch_size,
                                  num_workers=num_workers,
                                  collate_fn=collate_fn)
+
     return train_loader, valid_loader, test_loader

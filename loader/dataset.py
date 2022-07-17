@@ -54,15 +54,13 @@ def read_alignment_lines(
 
 class FastaDataset(IterableDataset):
 
-    def __init__(self, tokenizer, fasta_file_path):
+    def __init__(self, fasta_file_path):
 
         super(FastaDataset).__init__()
-        self.tokenizer = tokenizer
         self.fasta_file_path = fasta_file_path
         self.data_generator = read_fasta(str(self.fasta_file_path))
 
     def __iter__(self):
 
         for line in self.data_generator:
-            seq = " ".join(list(line)[-1])
-            yield self.tokenizer(seq, return_tensors="pt")
+            yield line

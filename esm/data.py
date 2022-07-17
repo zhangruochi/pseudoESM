@@ -12,6 +12,7 @@ import shutil
 import torch
 from pathlib import Path
 from esm.constants import proteinseq_toks
+import numpy as np
 
 RawMSA = Sequence[Tuple[str, str]]
 
@@ -120,6 +121,20 @@ class Alphabet(object):
         self.eos_idx = self.get_idx("<eos>")
         self.all_special_tokens = ['<eos>', '<unk>', '<pad>', '<cls>', '<mask>']
         self.unique_no_split_tokens = self.all_toks
+
+
+    def get_special_tokens_mask(self,
+                                token_list,
+                                already_has_special_tokens=True):
+        mask = []
+        for _ in token_list:
+            if _ in [self.tok_to_idx[tok] for tok in self.all_special_tokens]:
+                mask.append(1)
+            else:
+                mask.append(0)
+        return np.array(mask)
+
+
 
     def __len__(self):
         return len(self.all_toks)

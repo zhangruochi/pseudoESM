@@ -101,6 +101,7 @@ def load_model_and_alphabet_core(model_data, regression_data=None):
         model_args = {pra(arg[0]): arg[1] for arg in vars(model_data["args"]).items()}
         model_state = {prs(arg[0]): arg[1] for arg in model_data["model"].items()}
         model_type = esm.ProteinBertModel
+        
     elif model_data["args"].arch == "msa_transformer":
 
         # upgrade state dict

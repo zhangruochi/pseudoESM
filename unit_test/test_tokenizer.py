@@ -39,34 +39,25 @@ import torch
 import sys
 import os
 
-orig_cwd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.dirname(orig_cwd))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from pathlib import Path
 from omegaconf import OmegaConf
-from transformers import BertTokenizer
+from esm.data import Alphabet
 
 
 def test_tokenizer():
 
-    tokenizer = BertTokenizer(vocab_file = "../vocab.txt",
-                                do_lower_case = False,
-                                do_basic_tokenize = True,
-                                never_split = None,
-                                unk_token = '[UNK]',
-                                pad_token = '[PAD]',
-                                cls_token = '[CLS]',
-                                mask_token = '[MASK]')
-    
+    tokenizer = Alphabet.from_architecture("protein_bert_base")
+
+    print(tokenizer.tok_to_idx)
+
     amino_acid_sequence = "MSIQHFRVALIPFFAAFCLPVFAHPETLVKVKDAEDQLGARVGYIELDLNSGKILESFRPEERFPMMSTFKVLLCGAVLSRVDAGQEQLGRRIHYSQNDLVEYSPVTEKHLTDGMTVRELCSAAITMSDNTAANLLLTTIGGPKELTAFLHNMGDHVTRLDRWEPELNEAIPNDERDTTMPAAMATTLRKLLTGELLTLASRQQLIDWMEADKVAGPLLRSALPAGWFIADKSGAGERGSRGIIAALGPDGKPSRIVVIYTTGSQATMDERNRQIAEIGASLIKHW"
-    input_sequence = " ".join(list(amino_acid_sequence))
 
-    res = tokenizer(
-        input_sequence,
-        return_tensors="pt")
+    print(tokenizer.encode(amino_acid_sequence))
 
-    print(res)
+
+
 
 if __name__ == "__main__":
     test_tokenizer()
-    

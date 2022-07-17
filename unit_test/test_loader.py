@@ -1,37 +1,38 @@
-#!/usr/bin/env python3
-# -*- coding:utf-8 -*-
-###
-# File: /data/zhangruochi/projects/pseudoESM/unit_test/test_loader.py
-# Project: /data/zhangruochi/projects/pseudoESM/unit_test
-# Created Date: Sunday, July 17th 2022, 10:38:49 am
-# Author: Ruochi Zhang
-# Email: zrc720@gmail.com
-# -----
-# Last Modified: Sun Jul 17 2022
-# Modified By: Ruochi Zhang
-# -----
-# Copyright (c) 2022 Bodkin World Domination Enterprises
-# 
-# MIT License
-# 
-# Copyright (c) 2022 Silexon Ltd
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy of
-# this software and associated documentation files (the "Software"), to deal in
-# the Software without restriction, including without limitation the rights to
-# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-# of the Software, and to permit persons to whom the Software is furnished to do
-# so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
-# -----
-###
+import torch
+import sys
+import os
+
+orig_cwd = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, orig_cwd)
+sys.path.insert(0, os.path.dirname(orig_cwd))
+
+from omegaconf import DictConfig, OmegaConf
+from pseudoESM.loader.utils import make_loaders, DataCollector
+from pseudoESM.esm.data import Alphabet
+import hydra
+
+from omegaconf import OmegaConf
+
+
+
+def test_loader():
+
+    cfg = OmegaConf.load("../train_conf.yaml")
+    tokenizer = Alphabet.from_architecture("protein_bert_base")
+
+    collate_fn = DataCollector(tokenizer)
+
+    # load dataset
+    train_loader, valid_loader, test_loader = make_loaders(
+        collate_fn,
+        train_dir=os.path.join(orig_cwd, cfg.data.train_dir),
+        valid_dir=os.path.join(orig_cwd, cfg.data.valid_dir),
+        test_dir=os.path.join(orig_cwd, cfg.data.test_dir),
+        batch_size=cfg.train.batch_size,
+        num_workers=cfg.train.num_workers)
+
+    next(iter(train_loader))
+
+
+if __name__ == "__main__":
+    test_loader()

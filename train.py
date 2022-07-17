@@ -38,97 +38,48 @@
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 
 import hydra
 import torch
 import esm
-from omegaconf import DictConfig, OmegaConf
-from pseudoESM.loader.dataset import FastaDataset
-from pseudoESM.loader.utils import make_loaders
+from omegaconf import DictConfig
+from pseudoESM.loader.utils import make_loaders, DataCollector
+from pseudoESM.esm.data import Alphabet
+from pseudoESM.esm.model import ProteinBertModel
+
 from transformers import DataCollatorForLanguageModeling, Trainer, TrainingArguments, BertTokenizer
-# from esm.model import ProteinBertModel
-
-
-import datasets
-from datasets import load_dataset, load_metric
-from transformers import BertForMaskedLM, BertConfig
-
 
 
 @hydra.main(config_name="train_conf.yaml")
 def main(cfg: DictConfig):
 
     orig_cwd = hydra.utils.get_original_cwd()
-
-    tokenizer = BertTokenizer(vocab_file=os.path.join(orig_cwd, "./vocab.txt"),
-                              do_lower_case=False,
-                              do_basic_tokenize=True,
-                              never_split=None,
-                              unk_token='[UNK]',
-                              pad_token='[PAD]',
-                              cls_token='[CLS]',
-                              mask_token='[MASK]')
-
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer,
-                                                    mlm=True,
-                                                    mlm_probability=0.15)
+    tokenizer = Alphabet.from_architecture("protein_bert_base")
+    collate_fn = DataCollector(tokenizer)
 
     # load dataset
     train_loader, valid_loader, test_loader = make_loaders(
-        tokenizer,
-        data_collator,
+        collate_fn,
         train_dir=os.path.join(orig_cwd, cfg.data.train_dir),
         valid_dir=os.path.join(orig_cwd, cfg.data.valid_dir),
         test_dir=os.path.join(orig_cwd, cfg.data.test_dir),
         batch_size=cfg.train.batch_size,
         num_workers=cfg.train.num_workers)
 
-    print(next(iter(train_loader))["input_ids"].shape)
-    print(next(iter(valid_loader))["input_ids"].shape)
-    print(next(iter(test_loader))["input_ids"].shape)
+    class Args():
+        def __init__(self):
+            self.arch = 'protein_bert_base'
+            self.embed_dim = 768
+            self.layers = 6
+            self.ffn_embed_dim = 3072
+            self.attention_heads = 12
+            self.final_bias = True
 
+    args = Args()
 
-    # training_args = TrainingArguments(output_dir=cfg.log.output_dir,
-    #                                   overwrite_output_dir=True,
-    #                                   num_train_epochs=1,
-    #                                   per_gpu_train_batch_size=4,
-    #                                   save_steps=10_000,
-    #                                   save_total_limit=2,
-    #                                   weight_decay=0.1,
-    #                                   warmup_steps=1000,
-    #                                   lr_scheduler_type="cosine",
-    #                                   learning_rate=5e-4,
-    #                                   evaluation_strategy="steps")
-
-    # metric = load_metric("accuracy")
-
-    # def compute_metrics(eval_preds):
-    #     preds, labels = eval_preds
-    #     # preds have the same shape as the labels, after the argmax(-1) has been calculated
-    #     # by preprocess_logits_for_metrics
-    #     labels = labels.reshape(-1)
-    #     preds = preds.reshape(-1)
-    #     mask = labels != -100
-    #     labels = labels[mask]
-    #     preds = preds[mask]
-    #     return metric.compute(predictions=preds, references=labels)
-
-
-    # configuration = BertConfig(vocab_size = 32)
-    # model = BertForMaskedLM(configuration)
-
-    # trainer = Trainer(
-    #     model=model,
-    #     args=training_args,
-    #     data_collator=data_collator,
-    #     train_dataset=train_dataset,
-    #     eval_dataset=eval_dataset,
-    #     compute_metrics=compute_metrics
-    # )
-
-
-    # trainer.train()
-    # trainer.save_model("./EsperBERTo")
+    model = ProteinBertModel(args, tokenizer)
 
 if __name__ == "__main__":
     main()
