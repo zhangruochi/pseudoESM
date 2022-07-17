@@ -1,9 +1,19 @@
 
 
 train:
+  random_seed: 7
   epoch: 10
-  batch_size: 4
+  batch_size: 16
   num_workers: 1
+  device_ids: [0,1,2,3]
+  warmup_proportion: 0.01
+  weight_decay: 0.01
+  learning_rate: 5e-5
+  adam_epsilon: 1e-8
+  num_epoch: 5
+  gradient_accumulation_steps: 1
+  train_evaluation_batch: 256
+  valid_evaluation_batch: 256
 
 data:
   train_dir: "./data/train"
@@ -12,3 +22,28 @@ data:
 
 log:
   output_dir: "./ProtESM"
+
+logger:
+  log: False
+  logger_type: "pytorch"
+  log_dir: "runs"
+  per_n_steps: 10
+  num_evidence: 5
+  comparison_matric: f1
+  final_artifact_path: final
+  mlflow:
+    AWS_ACCESS_KEY_ID: root
+    AWS_SECRET_ACCESS_KEY: rootroot
+    MLFLOW_S3_ENDPOINT_URL: http://192.168.1.232:6000
+    MLFLOW_TRACKING_URI: http://192.168.1.232:7000
+    MLFLOW_EXPERIMENT_NAME: "pseudo_esm"
+    REGISTERED_MODEL_NAME: "PSEUDO_ESM"
+
+  std:
+    file_path: outputs/std.log
+
+inference:
+  model_path: "./inference_models/v9/final/model"
+
+other:
+  debug: false
