@@ -1,0 +1,14 @@
+
+
+train:
+  epoch: 10
+  batch_size: 4
+  num_workers: 4
+
+data:
+  train_dir: "./data/train"
+  valid_dir: "./data/eval"
+  test_dir: "./data/test"
+
+log:
+  output_dir: "./ProtESM"
