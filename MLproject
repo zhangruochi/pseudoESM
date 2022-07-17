@@ -1,0 +1,17 @@
+name: SAMG
+
+conda_env: environment.yaml
+
+entry_points:
+    
+    train:
+        command: "python train.py"  
+
+    main:
+        command: "python main.py"
+
+
+
+
+
+    

@@ -56,14 +56,14 @@ class DataCollector(object):
         self.mlm_probability = mlm_probability
 
     def __call__(self, batch):
-    
+
         batch_converter = self.tokenizer.get_batch_converter()
         batch_labels, batch_strs, batch_tokens = batch_converter(batch)
 
         labels = batch_tokens.clone()
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
         probability_matrix = torch.full(labels.shape, self.mlm_probability)
-        
+
         special_tokens_mask = [
             self.tokenizer.get_special_tokens_mask(
                 val, already_has_special_tokens=True)
@@ -125,4 +125,10 @@ def make_loaders(collate_fn,
                                  num_workers=num_workers,
                                  collate_fn=collate_fn)
 
-    return train_loader, valid_loader, test_loader
+    dataset_loader = {
+        "train": train_loader,
+        "valid": valid_loader,
+        "test": test_loader
+    }
+
+    return dataset_loader

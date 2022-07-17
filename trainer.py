@@ -2,12 +2,12 @@
 # -*- coding:utf-8 -*-
 ###
 # File: /data/zhangruochi/projects/molgen/trainer.py
-# Project: /data/zhangruochi/projects/autopatent3/iupac_ner
+# Project: /data/zhangruochi/projects/pseudoESM
 # Created Date: Wednesday, September 29th 2021, 3:41:32 pm
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sun Apr 10 2022
+# Last Modified: Mon Jul 18 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2021 Bodkin World Domination Enterprises
@@ -35,20 +35,20 @@
 # SOFTWARE.
 # -----
 ###
-import logging
 
-from zmq import device
-from logger.std import logger as std_logger
-
+from .std_logger import Logger
 import torch
 import numpy as np
 from pathlib import Path
 import random
+import mlflow
+from tqdm import tqdm
+from .loss import compute_metrics
 
 
 class Trainer(object):
     def __init__(self, net, criterion, dataloaders, optimizer, scheduler,
-                 device, cfg, callbacks):
+                 device, cfg):
 
         self.net = net
         self.device = device
@@ -58,164 +58,100 @@ class Trainer(object):
         self.scheduler = scheduler
         self.num_epoch = cfg.train.num_epoch
         self.batch_size = cfg.train.batch_size
-        self.random_seed = cfg.train.random_seed
-
-        # for logger
-        self.train_evaluation_batch = cfg.train.train_evaluation_batch
-        self.valid_evaluation_batch = cfg.train.valid_evaluation_batch
-
         self.cfg = cfg
 
-        self.train_loss = None
-        self.train_batch_idx = 0
+        self.global_train_step = 0
+        self.global_eval_step = 0
 
-        self.evaluation_train_batch_idx = 0
-        self.evaluation_train_batch_loss = None
-        self.evaluetion_train_epoch_loss = None
-
-        self.valid_batch_idx = 0
-        self.valid_batch_loss = None
-        self.valid_epoch_loss = None
-
-        self.epoch = 0
-
-        self.total_train_batch = len(self.dataloaders["train"])
-        self.total_evaluation_valid_batch = self.train_evaluation_batch
-        self.total_evaluation_valid_batch = self.valid_evaluation_batch
-        self.callbacks = callbacks
-
-        # fix random seed
-        self.random_fix()
-
-    def random_fix(self):
-        random.seed(self.random_seed)
-        np.random.seed(self.random_seed)
-        torch.manual_seed(self.random_seed)
-
-    def train_epoch(self):
-        # set training mode
-        self.net.train()
-
-        for _, data in enumerate(self.dataloaders["train"]):
-
-            batch = tuple(t.to(self.device) for t in data)
-            input_ids, input_lables = batch
-
-            # forward
-            pred_logits = self.net(input_ids)['logits']
-            self.train_loss = self.criterion(pred_logits.transpose(1, 2),input_lables )
-
-            # backward
-            self.optimizer.zero_grad()
-            self.train_loss.backward()
-            torch.nn.utils.clip_grad_norm_(self.net.parameters(),
-                                           self.cfg.train.max_grad_norm)
-            self.optimizer.step()
-            self.scheduler.step()
-
-            logging.info("lr: {}".format(self.scheduler.optimizer.state_dict()['param_groups'][0]['lr']))
-            
-            self.train_batch_idx += 1
-
-            # logging
-            if self.logger.log:
-                self.logger.on_train_batch_end()
-
-            ## callbacks
-            for callback in self.callbacks:
-                callback.on_train_batch_end(self)
-
-    def evaluate_train_epoch(self):
+    def evaluate(self):
         losses = []
-        self.evaluation_train_batch_idx = 0
-        self.net.eval()
-        
-        with torch.no_grad():
-            for _, data in enumerate(self.dataloaders["train"]):
-
-                batch = tuple(t.to(self.device) for t in data)
-
-                input_ids, input_lables = batch
-                # forward
-                pred_logits = self.net(input_ids)['logits']
-                self.evaluation_train_batch_loss = self.criterion(pred_logits.transpose(1, 2),input_lables).cpu().item()
-
-                losses.append(self.evaluation_train_batch_loss)
-                self.evaluation_train_batch_idx += 1
-
-                if self.evaluation_train_batch_idx == self.train_evaluation_batch:
-                    break
-
-                # callbacks
-                for callback in self.callbacks:
-                    callback.on_evaluate_train_batch_end(self)
-
-        self.evaluetion_train_epoch_loss = np.mean(losses)
-
-
-        if self.logger.log:
-            self.logger.log_metric("evaluation_train_epoch_loss",
-                                   self.evaluetion_train_epoch_loss,
-                                   self.epoch)
-            self.logger.log_evidence("train")
-
-    def evaluate_valid_epoch(self):
-        losses = []
-        self.valid_batch_idx = 0
-
+        accs = []
+        f1s = []
         self.net.eval()
         with torch.no_grad():
             for _, data in enumerate(self.dataloaders["valid"]):
                 batch = tuple(t.to(self.device) for t in data)
-                input_ids, input_lables = batch
+
+                batch_ids, true_labels = batch
+
                 # forward
-                pred_logits = self.net(input_ids)['logits']
-                print('+'*30)
-                print(pred_logits.shape,input_lables.shape)
-                print(np.unique(input_lables.cpu().numpy()))
-                print('+'*30)
-                self.valid_batch_loss = self.criterion(pred_logits.transpose(1, 2),input_lables).cpu().item()
-                
-                losses.append(self.valid_batch_loss)
-                self.valid_batch_idx += 1
+                pred_logits = self.net(batch_ids)['logits']
+                loss = self.criterion(pred_logits, true_labels).item()
+                metrics = compute_metrics(pred_logits, true_labels)
 
-                if self.valid_batch_idx == self.valid_evaluation_batch:
-                    break
+                losses.append(loss)
+                accs.append(metrics["acc"])
+                f1s.append(metrics["f1"])
 
-                # callbacks
-                for callback in self.callbacks:
-                    callback.on_evaluate_valid_batch_end(self)
+        valid_loss = np.mean(losses)
+        valid_acc = np.mean(accs)
+        valid_f1 = np.mean(f1s)
 
-        self.valid_epoch_loss = np.mean(losses)
-        
+        return {
+            "valid_loss": valid_loss,
+            "valid_acc": valid_acc,
+            "valid_f1": valid_f1
+        }
 
-        if self.logger.log:
-            self.logger.log_metric("valid_epoch_loss", self.valid_epoch_loss,
-                                   self.epoch)
-            self.logger.log_evidence("valid")
+    def run(self):
 
-    def train_model(self, logger):
+        for epoch in range(self.num_epoch):
 
-        for callback in self.callbacks:
-            callback.on_init_end(self)
+            self.net.train()
 
-        self.logger = logger
+            for _, data in enumerate(self.dataloaders["train"]):
 
-        for self.epoch in range(self.num_epoch):
+                batch = tuple(t.to(self.device) for t in data)
+                batch_ids, true_labels = batch
 
-            self.epoch_dir = Path("epoch_{}".format(self.epoch))
+                # forward
+                pred_logits = self.net(batch_ids)['logits']
+                train_loss = self.criterion(pred_logits, true_labels)
 
-            if not self.epoch_dir.exists():
-                self.epoch_dir.mkdir(parents=True, exist_ok=True)
+                # backward
 
-            self.train_epoch()
-            self.evaluate_train_epoch()
-            self.evaluate_valid_epoch()
+                if self.cfg.train.gradient_accumulation_steps > 1:
+                    train_loss = train_loss / self.cfg.train.gradient_accumulation_steps
 
-            for callback in self.callbacks:
-                callback.on_epoch_end(self)
+                train_loss.backward()
 
-            self.epoch += 1
+                if (self.global_train_step + 1) % self.cfg.train.gradient_accumulation_steps == 0:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.net.parameters(), self.cfg.train.max_grad_norm)
 
-        if self.logger.log:
-            self.logger.on_end()
+                    self.optimizer.step()
+                    self.net.zero_grad()
+                    self.scheduler.step()
+                    Logger.info(
+                        "lr: {}".format(self.scheduler.optimizer.state_dict()
+                                        ['param_groups'][0]['lr']))
+
+                if self.cfg.logger.log:
+                    mlflow.log_metric("train/loss",
+                                    train_loss.item(),
+                                    step=self.global_train_step)
+
+                Logger.info("train | step: {} | loss: {}".format(
+                    self.global_train_step, train_loss.item()))
+
+
+                if (self.global_train_step + 1) % self.cfg.train.eval_steps == 0:
+                    eval_metrics = self.evaluate()
+
+                    Logger.info(
+                        "valid | step: {} | loss: {} | acc: {} | f1: {}".
+                        format(self.global_eval_step,
+                               eval_metrics["valid_loss"], eval_metrics["valid_acc"],
+                               eval_metrics["valid_f1"]))
+
+                    for metric_name, metric_v in eval_metrics.items():
+                        mlflow.log_metric("eval/{}".format(metric_name),
+                                          metric_v,
+                                          step=self.global_eval_step)
+
+                    self.global_eval_step += 1
+                    self.net.train()
+
+                self.global_train_step += 1
+
+            epoch += 1

@@ -23,7 +23,7 @@ def test_loader():
     collate_fn = DataCollector(tokenizer)
 
     # load dataset
-    train_loader, valid_loader, test_loader = make_loaders(
+    dataloaders = make_loaders(
         collate_fn,
         train_dir=os.path.join(orig_cwd, cfg.data.train_dir),
         valid_dir=os.path.join(orig_cwd, cfg.data.valid_dir),
@@ -31,7 +31,10 @@ def test_loader():
         batch_size=cfg.train.batch_size,
         num_workers=cfg.train.num_workers)
 
-    next(iter(train_loader))
+    tokens, labels = next(iter(dataloaders["train"]))
+
+    print(tokens[3])
+    print(labels[3])
 
 
 if __name__ == "__main__":

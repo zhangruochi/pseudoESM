@@ -60,9 +60,6 @@ class FastaDataset(IterableDataset):
         self.fasta_file_path = fasta_file_path
         self.data_generator = read_fasta(str(self.fasta_file_path))
 
-    def __len__(self):
-        return len(list(self.data_generator))
-
     def __iter__(self):
 
         for line in self.data_generator:

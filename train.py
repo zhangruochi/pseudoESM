@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sun Jul 17 2022
+# Last Modified: Mon Jul 18 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -43,115 +43,84 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import hydra
 import torch
 import esm
-import tqdm
+import random
+import numpy as np
 from torch import nn as nn
-from torch.optim import AdamW,Adam
-from pytorch_transformers import WarmupLinearSchedule
-from pseudoESM.utils.utils import get_device
-from pseudoESM.mlflow_logger import MLflowLogger
-from pseudoESM.utils.optim_schedule import ScheduledOptim
+from torch.optim import AdamW
+from transformers import get_linear_schedule_with_warmup
 from omegaconf import DictConfig
 from pseudoESM.loader.utils import make_loaders, DataCollector
 from pseudoESM.esm.data import Alphabet
 from pseudoESM.esm.model import ProteinBertModel
-from callbacks import MyPrintingCallback
-from trainer import Trainer
+from pseudoESM.std_logger import Logger
+from pseudoESM.utils.utils import get_device
+from pseudoESM.trainer import Trainer
+from pseudoESM.loss import LossFunc
+
+
+
 
 @hydra.main(config_name="train_conf.yaml")
 def main(cfg: DictConfig):
 
+    # fix random seed
+    random.seed(cfg.train.random_seed)
+    torch.manual_seed(cfg.train.random_seed)
+    np.random.seed(cfg.train.random_seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(cfg.train.random_seed)
+
     orig_cwd = hydra.utils.get_original_cwd()
+    device = get_device(cfg)
+
+    Logger.info("using master device: {}".format(device))
+
+
     tokenizer = Alphabet.from_architecture("protein_bert_base")
     collate_fn = DataCollector(tokenizer)
 
     # load dataset
-    train_loader, valid_loader, test_loader = make_loaders(
+    dataloaders = make_loaders(
         collate_fn,
         train_dir=os.path.join(orig_cwd, cfg.data.train_dir),
         valid_dir=os.path.join(orig_cwd, cfg.data.valid_dir),
         test_dir=os.path.join(orig_cwd, cfg.data.test_dir),
         batch_size=cfg.train.batch_size,
         num_workers=cfg.train.num_workers)
-    
-    class Args():
-        def __init__(self):
-            self.arch = 'protein_bert_base'
-            self.embed_dim = 768
-            self.layers = 6
-            self.ffn_embed_dim = 3072
-            self.attention_heads = 12
-            self.final_bias = True
 
-    args = Args()
+    model = ProteinBertModel(cfg.model.protein_bert_base, tokenizer)
+    model.to(device)
+    Logger.info("model arch:{}".format(model))
 
-    device = get_device(cfg)
+    warmup_steps = cfg.train.warmup_steps
 
-    model = ProteinBertModel(args, tokenizer)
-    model.to(device=torch.device("cuda:{}".format(cfg.train.device_ids[0]
-                                                ) if torch.cuda.is_available()
-                               and len(cfg.train.device_ids) > 0 else "cpu"))    
-    dataset_loader = {
-        "train": train_loader,
-        "valid": valid_loader,
-        "test": test_loader
-    }
+    Logger.info("total warmup steps: {}".format(warmup_steps))
 
-    # for _, data in enumerate(dataset_loader["valid"]):
-    #         batch = tuple(t.to(device) for t in data)
-    #         input_ids, input_lables = batch
-    #         print(input_ids.device,'*****')
-    #         model=model.to(device)
-    #         # forward
-    #         pred_logits = model(input_ids)['logits']
-    #         break
-    # exit()
-
-    no_decay = ['bias', 'LayerNorm.weight']
-    param_optimizer = list(model.named_parameters())
-    optimizer_grouped_parameters = [{
-        'params':
-        [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)],
-        'weight_decay':
-        cfg.train.weight_decay
-    }, {
-        'params':
-        [p for n, p in param_optimizer if any(nd in n for nd in no_decay)],
-        'weight_decay':
-        0.0
-    }]
-
-    
-    # optimizer = Adam(model.parameters(), 
-    #                 lr=cfg.train.learning_rate, 
-    #                 betas=(0.9, 0.999), 
-    #                 weight_decay=cfg.train.weight_decay)
-    # optim_schedule = ScheduledOptim(optimizer, 768, n_warmup_steps=10000)
-
-    
-    num_train_optimization_steps = max(int(
-        len(dataset_loader["train"].dataset) / cfg.train.batch_size /
-        cfg.train.gradient_accumulation_steps) * cfg.train.num_epoch, 1)
-
-    warmup_steps = int(cfg.train.warmup_proportion * num_train_optimization_steps)
-    optimizer = AdamW(optimizer_grouped_parameters,
+    optimizer = AdamW(model.parameters(),
                       lr=cfg.train.learning_rate,
                       eps=cfg.train.adam_epsilon)
-    scheduler = WarmupLinearSchedule(optimizer,
-                                     warmup_steps=warmup_steps,
-                                     t_total=num_train_optimization_steps)
 
-    criterion = nn.NLLLoss(ignore_index=0)
-    my_trainer = Trainer(model,
+    scheduler = get_linear_schedule_with_warmup(
+        optimizer,
+        num_warmup_steps=warmup_steps,
+        num_training_steps=warmup_steps * 100,
+        last_epoch=-1)
+
+
+    criterion = LossFunc()
+
+    trainer = Trainer(model,
                          criterion,
-                         dataset_loader,
+                         dataloaders,
                          optimizer,
                          scheduler,
                          device,
-                         cfg,
-                         callbacks=[MyPrintingCallback()])
-    logger = MLflowLogger(cfg, my_trainer)
-    logging.info("training {} start......".format("esm model"))
-    my_trainer.train_model(logger)
+                         cfg)
+
+    Logger.info("start training......")
+    trainer.run()
+
+
 
 if __name__ == "__main__":
     main()
