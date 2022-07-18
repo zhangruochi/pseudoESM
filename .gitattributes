@@ -1,0 +1,3 @@
+/data/zhouqiong/github_space/pseudoESM/data/train/1million.fasta filter=lfs diff=lfs merge=lfs -text
+/data/zhouqiong/github_space/pseudoESM/data/eval/50thousand.fasta filter=lfs diff=lfs merge=lfs -text
+/data/zhouqiong/github_space/pseudoESM/data/test/50thousand.fasta filter=lfs diff=lfs merge=lfs -text
