@@ -1,5 +1,9 @@
 pretrained_model/
+train/
+test/
+eval/
 raw_data/
 outputs/
+mlruns/
 .pyc
 __pycache__/

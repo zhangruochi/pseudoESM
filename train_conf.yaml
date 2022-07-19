@@ -11,30 +11,29 @@ model:
 train:
   random_seed: 7
   num_epoch: 5
-  batch_size: 4
-  num_workers: 1
-  device_ids: [0]
-  warmup_steps: 1
+  batch_size: 16
+  num_workers: 16
+  device_ids: [0,1,2,3]
+  warmup_steps_ratio: 0.1
   weight_decay: 0.01
   learning_rate: 5e-5
   adam_epsilon: 1e-8
-  gradient_accumulation_steps: 1
-  max_grad_norm: 5
-  eval_steps: 1
+  gradient_accumulation_steps: 10
+  max_grad_norm: 1
+  eval_per_steps: 3000
 
 data:
+  total_train_num: 2000000
+  total_valid_num: 50000
+  total_test_num: 50000
   train_dir: "./data/train"
   valid_dir: "./data/eval"
   test_dir: "./data/test"
 
-
 logger:
   log: True
-  logger_type: "pytorch"
-  log_dir: "runs"
-  per_n_steps: 10
-  num_evidence: 5
-  comparison_matric: f1
+  log_dir: "outputs"
+  log_per_steps: 5
   final_artifact_path: final
   mlflow:
     AWS_ACCESS_KEY_ID: root
@@ -42,13 +41,13 @@ logger:
     MLFLOW_S3_ENDPOINT_URL: http://192.168.1.232:6000
     MLFLOW_TRACKING_URI: http://192.168.1.232:7000
     MLFLOW_EXPERIMENT_NAME: "pseudo_esm"
-    REGISTERED_MODEL_NAME: "PSEUDO_ESM"
+    REGISTERED_MODEL_NAME: "pseudo_esm"
 
-  std:
-    file_path: outputs/std.log
 
 inference:
-  model_path: "./inference_models/v9/final/model"
+  model_path: "/data/zhangruochi/projects/pseudoESM/outputs/2022-07-19/22-42-51/model_step_1_f1_0.182"
 
 other:
-  debug: false
+  debug: False
+  debug_step: 5
+

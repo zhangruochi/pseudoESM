@@ -3,7 +3,6 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from matplotlib import pyplot as plt
-from PIL import Image
 import pandas as pd
 import seaborn as sn
 import os
@@ -57,7 +56,9 @@ def save_cm(array, save_name):
 
 def load_weights(model, best_model_path, device):
 
-    best_model_path = os.path.join(best_model_path, "data/model.pth")
+    best_model_path = best_model_path / "data/model.pth"
+
+    print(best_model_path / "data/model.pth")
 
     if is_parallel(model):
         model = model.module

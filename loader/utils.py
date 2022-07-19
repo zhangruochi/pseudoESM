@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sun Jul 17 2022
+# Last Modified: Tue Jul 19 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -37,12 +37,12 @@
 ###
 
 import os
-import json
 import torch
 from torch.utils.data import DataLoader
 from .dataset import FastaDataset
 from torch.utils.data import ChainDataset
 from pathlib import Path
+import numpy as np
 
 
 
@@ -64,11 +64,11 @@ class DataCollector(object):
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
         probability_matrix = torch.full(labels.shape, self.mlm_probability)
 
-        special_tokens_mask = [
+        special_tokens_mask = np.array([
             self.tokenizer.get_special_tokens_mask(
                 val, already_has_special_tokens=True)
             for val in labels.tolist()
-        ]
+        ])
         special_tokens_mask = torch.tensor(special_tokens_mask,
                                             dtype=torch.bool)
 
@@ -94,11 +94,12 @@ class DataCollector(object):
 
 
 def make_loaders(collate_fn,
-                 train_dir='',
-                 valid_dir='',
-                 test_dir='',
+                 train_dir,
+                 valid_dir,
+                 test_dir,
                  batch_size=32,
                  num_workers=1):
+    
     train_loader = None
     if train_dir and os.path.exists(train_dir):
 

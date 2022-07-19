@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Mon Jul 18 2022
+# Last Modified: Wed Jul 20 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2021 Bodkin World Domination Enterprises
@@ -44,6 +44,10 @@ import random
 import mlflow
 from tqdm import tqdm
 from .loss import compute_metrics
+from .utils.utils import is_parallel
+import shutil
+import os
+import gc
 
 
 class Trainer(object):
@@ -61,31 +65,49 @@ class Trainer(object):
         self.cfg = cfg
 
         self.global_train_step = 0
-        self.global_eval_step = 0
+        self.global_valid_step = 0
+
+        ## save checkpoint
+        self.best_f1 = 0
+        self.best_model_path = Path(".")
+
+        self.root_level_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)))
 
     def evaluate(self):
         losses = []
         accs = []
         f1s = []
+
         self.net.eval()
         with torch.no_grad():
-            for _, data in enumerate(self.dataloaders["valid"]):
+            loss = acc = f1 = 0
+
+            for step, data in tqdm(
+                    enumerate(self.dataloaders["valid"]),
+                    total=self.cfg.data.total_valid_num //
+                    self.cfg.train.batch_size,
+                    desc="evaluating | loss: {}, acc: {} | f1: {}".format(
+                        loss, acc, f1)):
+
                 batch = tuple(t.to(self.device) for t in data)
-
                 batch_ids, true_labels = batch
-
                 # forward
                 pred_logits = self.net(batch_ids)['logits']
                 loss = self.criterion(pred_logits, true_labels).item()
                 metrics = compute_metrics(pred_logits, true_labels)
-
+                acc = metrics["acc"]
+                f1 = metrics["f1"]
                 losses.append(loss)
-                accs.append(metrics["acc"])
-                f1s.append(metrics["f1"])
+                accs.append(acc)
+                f1s.append(f1)
+
+                if self.cfg.other.debug and step >= self.cfg.other.debug_step:
+                    break
 
         valid_loss = np.mean(losses)
         valid_acc = np.mean(accs)
-        valid_f1 = np.mean(f1s)
+        valid_f1 = np.mean(f1)
 
         return {
             "valid_loss": valid_loss,
@@ -109,49 +131,85 @@ class Trainer(object):
                 train_loss = self.criterion(pred_logits, true_labels)
 
                 # backward
-
                 if self.cfg.train.gradient_accumulation_steps > 1:
-                    train_loss = train_loss / self.cfg.train.gradient_accumulation_steps
+                    train_loss /= self.cfg.train.gradient_accumulation_steps
 
-                train_loss.backward()
 
-                if (self.global_train_step + 1) % self.cfg.train.gradient_accumulation_steps == 0:
+                if (self.global_train_step +
+                        1) % self.cfg.train.gradient_accumulation_steps == 0:
+
+
+                    self.optimizer.zero_grad()
+                    train_loss.backward()
+
                     torch.nn.utils.clip_grad_norm_(
                         self.net.parameters(), self.cfg.train.max_grad_norm)
-
+                    
                     self.optimizer.step()
-                    self.net.zero_grad()
                     self.scheduler.step()
+
+                    if (self.global_train_step +
+                            1) % self.cfg.logger.log_per_steps == 0:
+
+                        cur_lr = self.scheduler.optimizer.state_dict()['param_groups'][0]['lr']
+
+                        mlflow.log_metric("train/loss",
+                                        train_loss.item(),
+                                        step=self.global_train_step)
+                        mlflow.log_metric("lr",
+                                        cur_lr,
+                                        step=self.global_train_step)
+                        Logger.info(
+                                "lr: {:.8f}".format(cur_lr))
+
+                        Logger.info("train | step: {:d} | loss: {:.4f}".format(
+                            self.global_train_step, train_loss.item()))
+
+
+                if (self.global_train_step +
+                        1) % self.cfg.train.eval_per_steps == 0:
+
+                    valid_metrics = self.evaluate()
+
+                    torch.cuda.empty_cache()
+                    gc.collect()
+
                     Logger.info(
-                        "lr: {}".format(self.scheduler.optimizer.state_dict()
-                                        ['param_groups'][0]['lr']))
+                        "valid | step: {:d} | loss: {:.4f} | acc: {:.4f} | f1: {:.4f}"
+                        .format(self.global_valid_step,
+                                valid_metrics["valid_loss"],
+                                valid_metrics["valid_acc"],
+                                valid_metrics["valid_f1"]))
 
-                if self.cfg.logger.log:
-                    mlflow.log_metric("train/loss",
-                                    train_loss.item(),
-                                    step=self.global_train_step)
+                    if self.cfg.logger.log:
+                        for metric_name, metric_v in valid_metrics.items():
+                            mlflow.log_metric("valid/{}".format(metric_name),
+                                              metric_v,
+                                              step=self.global_valid_step)
 
-                Logger.info("train | step: {} | loss: {}".format(
-                    self.global_train_step, train_loss.item()))
-
-
-                if (self.global_train_step + 1) % self.cfg.train.eval_steps == 0:
-                    eval_metrics = self.evaluate()
-
-                    Logger.info(
-                        "valid | step: {} | loss: {} | acc: {} | f1: {}".
-                        format(self.global_eval_step,
-                               eval_metrics["valid_loss"], eval_metrics["valid_acc"],
-                               eval_metrics["valid_f1"]))
-
-                    for metric_name, metric_v in eval_metrics.items():
-                        mlflow.log_metric("eval/{}".format(metric_name),
-                                          metric_v,
-                                          step=self.global_eval_step)
-
-                    self.global_eval_step += 1
+                    self.global_valid_step += 1
                     self.net.train()
+
+                    if valid_metrics["valid_f1"] >= self.best_f1:
+                        self.best_f1 = valid_metrics["valid_f1"]
+
+                        self.best_model_path = Path(
+                            "model_step_{}_f1_{}".format(
+                                self.global_valid_step,
+                                round(valid_metrics["valid_f1"], 3)))
+
+                        if self.best_model_path.exists():
+                            shutil.rmtree(self.best_model_path)
+
+                        mlflow.pytorch.save_model(
+                            (self.net.module
+                             if is_parallel(self.net) else self.net),
+                            self.best_model_path,
+                            code_paths=[
+                                os.path.join(self.root_level_dir, "esm")
+                            ])
 
                 self.global_train_step += 1
 
-            epoch += 1
+                if self.cfg.other.debug and self.global_train_step >= self.cfg.other.debug_step:
+                    break
