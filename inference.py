@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Tue Jul 19 2022
+# Last Modified: Thu Jul 21 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -40,6 +40,8 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import mlflow
 
 import os
@@ -47,9 +49,16 @@ import sys
 import torch.nn.functional as F
 from omegaconf import OmegaConf
 from pathlib import Path
+from pseudoESM.esm.data import Alphabet
+from pseudoESM.utils.utils import get_device
 
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
+
+from pseudoESM.loader.utils import make_loaders,  DataCollector
+from pseudoESM.evaluator import Evaluator
+from pseudoESM.loss import LossFunc
+import numpy as np
 
 
 def load_model(cfg):
@@ -57,12 +66,30 @@ def load_model(cfg):
     print("loading model from : {}".format(model_path))
     model = mlflow.pytorch.load_model(model_path, map_location="cpu")
     model.eval()
-
     return model
+
+
 
 
 if __name__ == "__main__":
     cfg = OmegaConf.load(os.path.join(root_dir, "train_conf.yaml"))
+    orig_cwd = os.path.dirname(__file__)
+    
     model = load_model(cfg)
+    tokenizer = Alphabet.from_architecture("protein_bert_base")
+    collate_fn = DataCollector(tokenizer)
+    device = get_device(cfg)
+    model.to(device)
+    dataloader = make_loaders(collate_fn,
+                        test_dir=os.path.join(orig_cwd, cfg.data.test_dir),
+                        batch_size=cfg.train.batch_size,
+                        num_workers=cfg.train.num_workers)["test"]
 
-    print(model)
+    
+    evaluetor = Evaluator(model, dataloader, LossFunc(), device, cfg)
+    test_metrics = evaluetor.run()
+    loss = test_metrics["test_loss"]
+    print("ECE: {}".format(np.exp(loss)))
+
+
+    # ECE: 15.462533462714758

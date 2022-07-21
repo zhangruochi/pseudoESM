@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Wed Jul 20 2022
+# Last Modified: Thu Jul 21 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2021 Bodkin World Domination Enterprises
@@ -38,6 +38,8 @@
 
 from .std_logger import Logger
 import torch
+from torch.cuda.amp import autocast as autocast
+from torch.cuda.amp import GradScaler
 import numpy as np
 from pathlib import Path
 import random
@@ -74,6 +76,11 @@ class Trainer(object):
         self.root_level_dir = os.path.join(
             os.path.dirname(os.path.abspath(__file__)))
 
+        ## amp
+        self.scaler = None
+
+
+
     def evaluate(self):
         losses = []
         accs = []
@@ -93,7 +100,9 @@ class Trainer(object):
                 batch = tuple(t.to(self.device) for t in data)
                 batch_ids, true_labels = batch
                 # forward
-                pred_logits = self.net(batch_ids)['logits']
+                pred_logits = self.net(batch_ids,
+                                       need_head_weights=False,
+                                       return_contacts=False)['logits']
                 loss = self.criterion(pred_logits, true_labels).item()
                 metrics = compute_metrics(pred_logits, true_labels)
                 acc = metrics["acc"]
@@ -117,6 +126,13 @@ class Trainer(object):
 
     def run(self):
 
+        if self.cfg.train.amp:
+            self.scaler = GradScaler(init_scale=2**16,
+                                     growth_factor=2,
+                                     backoff_factor=0.5,
+                                     growth_interval=2000,
+                                     enabled=True)
+
         for epoch in range(self.num_epoch):
 
             self.net.train()
@@ -127,8 +143,13 @@ class Trainer(object):
                 batch_ids, true_labels = batch
 
                 # forward
-                pred_logits = self.net(batch_ids)['logits']
-                train_loss = self.criterion(pred_logits, true_labels)
+                if self.cfg.train.amp:
+                    with autocast():
+                        pred_logits = self.net(batch_ids, need_head_weights=False, return_contacts=False)['logits']
+                        train_loss = self.criterion(pred_logits, true_labels)
+                else:
+                    pred_logits = self.net(batch_ids, need_head_weights=False, return_contacts=False)['logits']
+                    train_loss = self.criterion(pred_logits, true_labels)
 
                 # backward
                 if self.cfg.train.gradient_accumulation_steps > 1:
@@ -140,39 +161,50 @@ class Trainer(object):
 
 
                     self.optimizer.zero_grad()
-                    train_loss.backward()
+
+                    if self.cfg.train.amp:
+                        self.scaler.scale(train_loss).backward()
+                    else:
+                        train_loss.backward()
 
                     torch.nn.utils.clip_grad_norm_(
                         self.net.parameters(), self.cfg.train.max_grad_norm)
-                    
-                    self.optimizer.step()
+
+                    if self.cfg.train.amp:
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        self.optimizer.step()
+
                     self.scheduler.step()
 
-                    if (self.global_train_step +
-                            1) % self.cfg.logger.log_per_steps == 0:
 
-                        cur_lr = self.scheduler.optimizer.state_dict()['param_groups'][0]['lr']
+                ## logging
 
-                        mlflow.log_metric("train/loss",
-                                        train_loss.item(),
-                                        step=self.global_train_step)
-                        mlflow.log_metric("lr",
-                                        cur_lr,
-                                        step=self.global_train_step)
-                        Logger.info(
-                                "lr: {:.8f}".format(cur_lr))
+                if (self.global_train_step + 1
+                ) % self.cfg.logger.log_per_steps == 0:
 
-                        Logger.info("train | step: {:d} | loss: {:.4f}".format(
-                            self.global_train_step, train_loss.item()))
+                    cur_lr = self.scheduler.optimizer.state_dict()['param_groups'][0]['lr']
 
+                    mlflow.log_metric("train/loss",
+                                    train_loss.item(),
+                                    step=self.global_train_step)
+                    mlflow.log_metric("lr",
+                                    cur_lr,
+                                    step=self.global_train_step)
+                    Logger.info(
+                            "lr: {:.8f}".format(cur_lr))
+
+                    Logger.info("train | step: {:d} | loss: {:.4f}".format(
+                        self.global_train_step, train_loss.item()))
+
+
+                ### evaluating
 
                 if (self.global_train_step +
                         1) % self.cfg.train.eval_per_steps == 0:
 
                     valid_metrics = self.evaluate()
-
-                    torch.cuda.empty_cache()
-                    gc.collect()
 
                     Logger.info(
                         "valid | step: {:d} | loss: {:.4f} | acc: {:.4f} | f1: {:.4f}"

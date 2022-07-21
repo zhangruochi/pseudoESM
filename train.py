@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Tue Jul 19 2022
+# Last Modified: Thu Jul 21 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -79,7 +79,10 @@ def main(cfg: DictConfig):
     Logger.info("using master device: {}".format(device))
 
     tokenizer = Alphabet.from_architecture("protein_bert_base")
-    collate_fn = DataCollector(tokenizer)
+    collate_fn = DataCollector(tokenizer,
+                               mlm=cfg.model.task.mlm,
+                               mlm_probability=cfg.model.task.mlm_probability,
+                               max_length=cfg.model.task.max_length)
 
     #-------------------- load dataset --------------------
     dataloaders = make_loaders(collate_fn,
@@ -103,17 +106,15 @@ def main(cfg: DictConfig):
     Logger.info("model arch:{}".format(model))
 
     num_training_steps = cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
-    warmup_steps = int(
-        cfg.train.warmup_steps_ratio * num_training_steps)
+    warmup_steps = int(cfg.train.warmup_steps_ratio * num_training_steps)
 
     Logger.info("total warmup steps: {}".format(warmup_steps))
-    
+
     optimizer = AdamW(model.parameters(),
                       lr=cfg.train.learning_rate,
                       eps=cfg.train.adam_epsilon)
 
     criterion = LossFunc()
-
 
     if cfg.other.debug:
         cfg.train.num_epoch = 10
@@ -136,9 +137,8 @@ def main(cfg: DictConfig):
     trainer = Trainer(model, criterion, dataloaders, optimizer, scheduler,
                       device, cfg)
 
-
     if cfg.logger.log:
-            # log hyper-parameters
+        # log hyper-parameters
         for p, v in cfg.data.items():
             mlflow.log_param(p, v)
 
@@ -147,7 +147,7 @@ def main(cfg: DictConfig):
 
         for p, v in cfg.model.protein_bert_base.items():
             mlflow.log_param(p, v)
-            
+
     Logger.info("start training......")
     trainer.run()
 

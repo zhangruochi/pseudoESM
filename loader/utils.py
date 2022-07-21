@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Tue Jul 19 2022
+# Last Modified: Thu Jul 21 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -48,17 +48,20 @@ import numpy as np
 
 class DataCollector(object):
     def __init__(self, tokenizer,
+                 max_length: int = 512,
                  mlm: bool = True,
                  mlm_probability: float = 0.15):
 
         self.tokenizer = tokenizer
         self.mlm = mlm
         self.mlm_probability = mlm_probability
+        self.max_length = max_length
 
     def __call__(self, batch):
 
         batch_converter = self.tokenizer.get_batch_converter()
         batch_labels, batch_strs, batch_tokens = batch_converter(batch)
+        batch_tokens = batch_tokens[:, :self.max_length]
 
         labels = batch_tokens.clone()
         # We sample a few tokens in each sequence for MLM training (with probability `self.mlm_probability`)
@@ -71,7 +74,6 @@ class DataCollector(object):
         ])
         special_tokens_mask = torch.tensor(special_tokens_mask,
                                             dtype=torch.bool)
-
 
         probability_matrix.masked_fill_(special_tokens_mask, value=0.0)
         masked_indices = torch.bernoulli(probability_matrix).bool()
@@ -89,17 +91,16 @@ class DataCollector(object):
                                      labels.shape,
                                      dtype=torch.long)
         batch_tokens[indices_random] = random_words[indices_random]
-
         return batch_tokens, labels
 
 
 def make_loaders(collate_fn,
-                 train_dir,
-                 valid_dir,
-                 test_dir,
+                 train_dir = "",
+                 valid_dir = "",
+                 test_dir = "",
                  batch_size=32,
                  num_workers=1):
-    
+
     train_loader = None
     if train_dir and os.path.exists(train_dir):
 
