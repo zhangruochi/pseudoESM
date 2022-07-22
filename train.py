@@ -49,7 +49,6 @@ import numpy as np
 from torch import nn as nn
 from torch.optim import AdamW
 from transformers import get_linear_schedule_with_warmup
-from omegaconf import DictConfig
 from pseudoESM.loader.utils import make_loaders, DataCollector
 from pseudoESM.esm.data import Alphabet
 from pseudoESM.esm.model import ProteinBertModel
@@ -59,11 +58,21 @@ from pseudoESM.trainer import Trainer
 from pseudoESM.loss import LossFunc
 from pseudoESM.evaluator import Evaluator
 import mlflow
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+import argparse
+from omegaconf import OmegaConf
+
+#
+parser = argparse.ArgumentParser(description='Train a recognizer')
+parser.add_argument('--local_rank', type=int, default=0)
+args = parser.parse_args()
 
 
-@hydra.main(config_name="train_conf.yaml")
-def main(cfg: DictConfig):
-
+def main():
+    orig_cwd = os.path.dirname(os.path.abspath(__file__))
+    cfg_path = os.path.join(orig_cwd,"train_conf.yaml")
+    cfg = OmegaConf.load(cfg_path)
     # fix random seed
     random.seed(cfg.train.random_seed)
     torch.manual_seed(cfg.train.random_seed)
@@ -72,11 +81,15 @@ def main(cfg: DictConfig):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(cfg.train.random_seed)
 
-    orig_cwd = hydra.utils.get_original_cwd()
-
-    device = get_device(cfg)
-
-    Logger.info("using master device: {}".format(device))
+    #set up distributed device
+    local_rank = int(args.local_rank)
+    if 'LOCAL_RANK' not in os.environ:
+        os.environ['LOCAL_RANK'] = str(args.local_rank)
+    rank = int(os.environ["RANK"])
+    torch.cuda.set_device(rank % torch.cuda.device_count())
+    dist.init_process_group(backend="nccl")
+    device = torch.device("cuda", local_rank)
+    print(f"[init] == local rank: {local_rank}, global rank: {rank} ==")
 
     tokenizer = Alphabet.from_architecture("protein_bert_base")
     collate_fn = DataCollector(tokenizer,
@@ -98,12 +111,10 @@ def main(cfg: DictConfig):
     # -------------------- load model --------------------
     model = ProteinBertModel(cfg.model.protein_bert_base, tokenizer)
 
-    if torch.cuda.device_count() > 1 and len(cfg.train.device_ids) > 1:
-        Logger.info("use " + str(len(cfg.train.device_ids)) + " GPUs!\n")
-        model = torch.nn.DataParallel(model, device_ids=cfg.train.device_ids)
-
+    # DistributedDataParallel
     model.to(device)
     Logger.info("model arch:{}".format(model))
+    model = DDP(model, device_ids=[local_rank], output_device=local_rank,find_unused_parameters=True)
 
     num_training_steps = cfg.train.num_epoch * cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
     warmup_steps = int(cfg.train.warmup_steps_ratio * num_training_steps)
