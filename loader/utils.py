@@ -103,29 +103,40 @@ def make_loaders(collate_fn,
 
     train_loader = None
     if train_dir and os.path.exists(train_dir):
-
-        train_loader = DataLoader(ChainDataset([FastaDataset(file_path) for file_path in Path(train_dir).glob("*.fasta")]) ,
+        trainset = ChainDataset([FastaDataset(file_path) for file_path in Path(train_dir).glob("*.fasta")])
+        
+        train_loader = DataLoader(trainset,
                                   batch_size=batch_size,
                                   shuffle=False,
                                   num_workers=num_workers,
-                                  collate_fn=collate_fn)
+                                  collate_fn=collate_fn,
+                                  pin_memory=True,
+                                  sampler=None)
 
     valid_loader = None
     if valid_dir and os.path.exists(valid_dir):
-        valid_loader = DataLoader(ChainDataset([
+        validset = ChainDataset([
             FastaDataset(file_path)
-            for file_path in Path(valid_dir).glob("*.fasta")]),
+            for file_path in Path(valid_dir).glob("*.fasta")])
+        
+        valid_loader = DataLoader(validset,
                                   batch_size=batch_size,
                                   num_workers=num_workers,
-                                  collate_fn=collate_fn)
+                                  collate_fn=collate_fn,
+                                  pin_memory=True,
+                                  sampler=None)
     test_loader = None
     if test_dir and os.path.exists(test_dir):
-        test_loader = DataLoader(ChainDataset(
+        testset = ChainDataset(
             FastaDataset(file_path)
-            for file_path in Path(test_dir).glob("*.fasta")),
+            for file_path in Path(test_dir).glob("*.fasta"))
+        
+        test_loader = DataLoader(testset,
                                  batch_size=batch_size,
                                  num_workers=num_workers,
-                                 collate_fn=collate_fn)
+                                 collate_fn=collate_fn,
+                                  pin_memory=True,
+                                  sampler=None)
 
     dataset_loader = {
         "train": train_loader,

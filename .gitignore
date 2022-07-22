@@ -7,3 +7,7 @@ outputs/
 mlruns/
 .pyc
 __pycache__/
+data/split/
+data/*.zip
+esm/
+loader/__pycache__/
