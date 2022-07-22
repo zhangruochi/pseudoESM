@@ -105,7 +105,7 @@ def main(cfg: DictConfig):
     model.to(device)
     Logger.info("model arch:{}".format(model))
 
-    num_training_steps = cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
+    num_training_steps = cfg.train.num_epoch * cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
     warmup_steps = int(cfg.train.warmup_steps_ratio * num_training_steps)
 
     Logger.info("total warmup steps: {}".format(warmup_steps))

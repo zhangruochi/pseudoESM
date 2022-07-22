@@ -15,11 +15,11 @@ model:
 train:
   amp: true
   random_seed: 7
-  num_epoch: 20
+  num_epoch: 10
   batch_size: 72
   num_workers: 16
   device_ids: [0,1,2]
-  warmup_steps_ratio: 0.1
+  warmup_steps_ratio: 0.05
   weight_decay: 0
   learning_rate: 1e-4
   adam_epsilon: 1e-8
@@ -50,7 +50,7 @@ logger:
 
 
 inference:
-  model_path: "/data/zhangruochi/projects/pseudoESM/pretrained_model/model_step_22_f1_0.335"
+  model_path: "/data/zhangruochi/projects/pseudoESM/pretrained_model/model_step_1_f1_0.203"
 
 other:
   debug: False
