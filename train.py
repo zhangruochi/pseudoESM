@@ -75,7 +75,7 @@ def main(cfg: DictConfig):
     global_rank = 0
     local_rank = 0
     world_size = 0
-    
+
     if cfg.mode.gpu:
         local_rank = int(os.environ["LOCAL_RANK"])
         global_rank = int(os.environ['RANK'])
@@ -88,7 +88,9 @@ def main(cfg: DictConfig):
     if cfg.mode.gpu:
         setup_multinodes(local_rank)
         world_size = dist.get_world_size()
-        Logger.info("world size:{}".format(world_size))
+
+        if global_rank == 0:
+            Logger.info("world size:{}".format(world_size))
 
     if cfg.mode.gpu:
         device = torch.device("cuda", local_rank)
@@ -118,9 +120,11 @@ def main(cfg: DictConfig):
     # -------------------- load model --------------------
     model = ProteinBertModel(cfg.model.protein_bert_base, tokenizer)
 
-    # DistributedDataParallel
+    ## DistributedDataParallel
     model.to(device)
-    Logger.info("model arch:{}".format(model))
+
+    if global_rank == 0:
+        Logger.info("model arch:{}".format(model))
 
     if cfg.mode.gpu:
         model = DDP(model,
@@ -128,15 +132,23 @@ def main(cfg: DictConfig):
                     output_device=local_rank,
                     find_unused_parameters=True)
 
-    num_training_steps = cfg.train.num_epoch * cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
-    warmup_steps = int(cfg.train.warmup_steps_ratio * num_training_steps)
 
-    Logger.info("total warmup steps: {}".format(warmup_steps))
+    # -------------------- load optimizer --------------------
+    num_training_steps = cfg.train.num_epoch * cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
+    if cfg.mode.gpu:
+        num_training_steps = num_training_steps // world_size
+
+    warmup_steps = int(cfg.train.warmup_steps_ratio * num_training_steps)
 
     optimizer = AdamW(model.parameters(),
                       lr=cfg.train.learning_rate,
                       eps=cfg.train.adam_epsilon)
 
+    if global_rank == 0:
+        Logger.info("total warmup steps: {}".format(warmup_steps))
+
+
+    # -------------------- load loss function --------------------
     criterion = LossFunc()
 
     if cfg.other.debug:
@@ -158,9 +170,9 @@ def main(cfg: DictConfig):
             last_epoch=-1)
 
     trainer = Trainer(model, criterion, dataloaders, optimizer, scheduler,
-                      device, cfg)
+                      device, global_rank, world_size, cfg)
 
-    if cfg.logger.log:
+    if cfg.logger.log and global_rank == 0:
         # log hyper-parameters
         for p, v in cfg.data.items():
             mlflow.log_param(p, v)
@@ -171,27 +183,33 @@ def main(cfg: DictConfig):
         for p, v in cfg.model.protein_bert_base.items():
             mlflow.log_param(p, v)
 
-    Logger.info("start training......")
+    if global_rank == 0:
+        Logger.info("start training......")
     trainer.run()
 
-    Logger.info("finished training......")
+    if global_rank == 0:
+        Logger.info("finished training......")
 
-    Logger.info("loading best weights......")
+    if global_rank == 0:
+        Logger.info("loading best weights......")
     load_weights(model, trainer.best_model_path, device)
 
-    Logger.info("start evaluating......")
+    if global_rank == 0:
+        Logger.info("start evaluating......")
     evaluetor = Evaluator(model, dataloaders["test"], criterion, device, cfg)
 
     test_metrics = evaluetor.run()
 
-    Logger.info("test | loss: {:.4f} | acc: {:.4f} | f1: {:.4f}".format(
-        test_metrics["test_loss"], test_metrics["test_acc"],
-        test_metrics["test_f1"]))
+    if global_rank == 0:
+        Logger.info("test | loss: {:.4f} | acc: {:.4f} | f1: {:.4f}".format(
+            test_metrics["test_loss"], test_metrics["test_acc"],
+            test_metrics["test_f1"]))
 
     for metric_name, metric_v in test_metrics.items():
         mlflow.log_metric("test/{}".format(metric_name), metric_v, step=1)
 
-    Logger.info("finished evaluating......")
+    if global_rank == 0:
+        Logger.info("finished evaluating......")
 
 
     cleanup_multinodes()

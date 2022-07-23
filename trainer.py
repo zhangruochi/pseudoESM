@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Thu Jul 21 2022
+# Last Modified: Sat Jul 23 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2021 Bodkin World Domination Enterprises
@@ -54,7 +54,7 @@ import gc
 
 class Trainer(object):
     def __init__(self, net, criterion, dataloaders, optimizer, scheduler,
-                 device, cfg):
+                 device, global_rank, world_size, cfg):
 
         self.net = net
         self.device = device
@@ -64,6 +64,8 @@ class Trainer(object):
         self.scheduler = scheduler
         self.num_epoch = cfg.train.num_epoch
         self.batch_size = cfg.train.batch_size
+        self.global_rank = global_rank
+        self.world_size = world_size
         self.cfg = cfg
 
         self.global_train_step = 0
@@ -86,15 +88,20 @@ class Trainer(object):
         accs = []
         f1s = []
 
+        total_eval_step = self.cfg.data.total_valid_num // (
+            self.cfg.train.batch_size)
+
+        if self.world_size != 0:
+            total_eval_step = total_eval_step // self.world_size
+
         self.net.eval()
         with torch.no_grad():
             loss = acc = f1 = 0
 
             for step, data in tqdm(
-                    enumerate(self.dataloaders["valid"]),
-                    total=self.cfg.data.total_valid_num //
-                    self.cfg.train.batch_size,
-                    desc="evaluating | loss: {}, acc: {} | f1: {}".format(
+                    enumerate(self.dataloaders["train"]),
+                    total=total_eval_step,
+                    docs="evaluating | loss: {}, acc: {} | f1: {}".format(
                         loss, acc, f1)):
 
                 batch = tuple(t.to(self.device) for t in data)
@@ -137,7 +144,7 @@ class Trainer(object):
 
             self.net.train()
 
-            for _, data in enumerate(self.dataloaders["train"]):
+            for _, data in enumerate(self.dataloaders["valid"]):
 
                 batch = tuple(t.to(self.device) for t in data)
                 batch_ids, true_labels = batch
@@ -158,7 +165,6 @@ class Trainer(object):
 
                 if (self.global_train_step +
                         1) % self.cfg.train.gradient_accumulation_steps == 0:
-
 
                     self.optimizer.zero_grad()
 
@@ -186,17 +192,18 @@ class Trainer(object):
 
                     cur_lr = self.scheduler.optimizer.state_dict()['param_groups'][0]['lr']
 
-                    mlflow.log_metric("train/loss",
-                                    train_loss.item(),
-                                    step=self.global_train_step)
-                    mlflow.log_metric("lr",
-                                    cur_lr,
-                                    step=self.global_train_step)
-                    Logger.info(
-                            "lr: {:.8f}".format(cur_lr))
+                    if self.global_rank == 0:
+                        mlflow.log_metric("train/loss",
+                                        train_loss.item(),
+                                        step=self.global_train_step)
+                        mlflow.log_metric("lr",
+                                        cur_lr,
+                                        step=self.global_train_step)
+                        Logger.info(
+                                "lr: {:.8f}".format(cur_lr))
 
-                    Logger.info("train | step: {:d} | loss: {:.4f}".format(
-                        self.global_train_step, train_loss.item()))
+                        Logger.info("train | epoch: {:d}  step: {:d} | loss: {:.4f}".format(epoch,
+                            self.global_train_step, train_loss.item()))
 
 
                 ### evaluating
@@ -206,18 +213,21 @@ class Trainer(object):
 
                     valid_metrics = self.evaluate()
 
-                    Logger.info(
-                        "valid | step: {:d} | loss: {:.4f} | acc: {:.4f} | f1: {:.4f}"
-                        .format(self.global_valid_step,
-                                valid_metrics["valid_loss"],
-                                valid_metrics["valid_acc"],
-                                valid_metrics["valid_f1"]))
+                    if self.global_rank == 0:
 
-                    if self.cfg.logger.log:
-                        for metric_name, metric_v in valid_metrics.items():
-                            mlflow.log_metric("valid/{}".format(metric_name),
-                                              metric_v,
-                                              step=self.global_valid_step)
+                        Logger.info(
+                            "valid | epoch: {:d} | step: {:d} | loss: {:.4f} | acc: {:.4f} | f1: {:.4f}"
+                            .format(epoch,
+                                    self.global_valid_step,
+                                    valid_metrics["valid_loss"],
+                                    valid_metrics["valid_acc"],
+                                    valid_metrics["valid_f1"]))
+
+                        if self.cfg.logger.log:
+                            for metric_name, metric_v in valid_metrics.items():
+                                mlflow.log_metric("valid/{}".format(metric_name),
+                                                metric_v,
+                                                step=self.global_valid_step)
 
                     self.global_valid_step += 1
                     self.net.train()
@@ -233,13 +243,14 @@ class Trainer(object):
                         if self.best_model_path.exists():
                             shutil.rmtree(self.best_model_path)
 
-                        mlflow.pytorch.save_model(
-                            (self.net.module
-                             if is_parallel(self.net) else self.net),
-                            self.best_model_path,
-                            code_paths=[
-                                os.path.join(self.root_level_dir, "esm")
-                            ])
+                        if self.cfg.logger.log:
+                            mlflow.pytorch.save_model(
+                                (self.net.module
+                                if is_parallel(self.net) else self.net),
+                                self.best_model_path,
+                                code_paths=[
+                                    os.path.join(self.root_level_dir, "esm")
+                                ])
 
                 self.global_train_step += 1
 
