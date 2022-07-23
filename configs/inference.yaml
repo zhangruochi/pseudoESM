@@ -1,0 +1,7 @@
+inference:
+  test_dir:  "./data/test"
+  total_test_num: 50000
+  device_ids: [0,1,2,3]
+  batch_size: 32
+  num_workers: 4
+  model_path: "./pretrained_model/model_step_50_f1_0.223"

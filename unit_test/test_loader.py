@@ -24,30 +24,32 @@ def test_generator():
 
         # if i % 100 == 0:
         #     print(i)
-        
+
     assert i == 50000
 
 def test_loader():
 
-    cfg = OmegaConf.load("../train_conf.yaml")
+    cfg = OmegaConf.load("../configs/train.yaml")
     tokenizer = Alphabet.from_architecture("protein_bert_base")
 
     collate_fn = DataCollector(tokenizer)
 
     # load dataset
-    dataloaders = make_loaders(
-        collate_fn,
-        train_dir=os.path.join(orig_cwd, cfg.data.train_dir),
-        valid_dir=os.path.join(orig_cwd, cfg.data.valid_dir),
-        test_dir=os.path.join(orig_cwd, cfg.data.test_dir),
-        batch_size=cfg.train.batch_size,
-        num_workers=cfg.train.num_workers)
+    dataloaders = make_loaders(collate_fn,
+                               global_rank = 1,
+                               world_size = 4,
+                               train_dir="",
+                               valid_dir="",
+                               test_dir=os.path.join(orig_cwd,
+                                                     cfg.data.test_dir),
+                               batch_size=cfg.train.batch_size,
+                               num_workers=cfg.train.num_workers)
 
-    line = next(iter(dataloaders["valid"]))
+    line = next(iter(dataloaders["test"]))
 
     print(line[0].shape)
 
-    for i, line in enumerate(dataloaders["valid"]):
+    for i, line in enumerate(dataloaders["test"]):
         if i % 100 == 0:
             print(i, line[0].shape, line[1].shape)
 

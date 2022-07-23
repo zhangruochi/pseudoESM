@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Wed Jul 20 2022
+# Last Modified: Fri Jul 22 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -57,14 +57,13 @@ class Evaluator():
             loss = acc = f1 = 0
             for step, data in tqdm(
                     enumerate(self.test_loader),
-                    total=self.cfg.data.total_test_num //
-                    self.cfg.train.batch_size,
+                    total=self.cfg.inference.total_test_num //
+                    self.cfg.inference.batch_size,
                     desc="evaluating | loss: {}, acc: {} | f1: {}".format(
                         loss, acc, f1)):
                 batch = tuple(t.to(self.device) for t in data)
 
                 batch_ids, true_labels = batch
-
                 # forward
                 pred_logits = self.model(batch_ids)['logits']
                 loss = self.criterion(pred_logits, true_labels).item()
@@ -77,15 +76,14 @@ class Evaluator():
                 accs.append(acc)
                 f1s.append(f1)
 
-                if self.cfg.other.debug and step >= self.cfg.other.debug_step:
-                    break
-
         test_loss = np.mean(losses)
         test_acc = np.mean(accs)
         test_f1 = np.mean(f1s)
+        test_ece = np.exp(test_loss)
 
         return {
             "test_loss": test_loss,
             "test_acc": test_acc,
-            "test_f1": test_f1
+            "test_f1": test_f1,
+            "test_ece": test_ece,
         }

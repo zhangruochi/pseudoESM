@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Thu Jul 21 2022
+# Last Modified: Sat Jul 23 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -95,48 +95,54 @@ class DataCollector(object):
 
 
 def make_loaders(collate_fn,
-                 train_dir = "",
-                 valid_dir = "",
-                 test_dir = "",
+                 global_rank,
+                 world_size,
+                 train_dir="",
+                 valid_dir="",
+                 test_dir="",
                  batch_size=32,
+                 pin_memory=False,
                  num_workers=1):
 
     train_loader = None
     if train_dir and os.path.exists(train_dir):
-        trainset = ChainDataset([FastaDataset(file_path) for file_path in Path(train_dir).glob("*.fasta")])
-        
+        trainset = ChainDataset([
+            FastaDataset(file_path, global_rank, world_size)
+            for file_path in Path(train_dir).glob("*.fasta")
+        ])
+
         train_loader = DataLoader(trainset,
                                   batch_size=batch_size,
                                   shuffle=False,
                                   num_workers=num_workers,
                                   collate_fn=collate_fn,
-                                  pin_memory=True,
+                                  pin_memory=pin_memory,
                                   sampler=None)
 
     valid_loader = None
     if valid_dir and os.path.exists(valid_dir):
         validset = ChainDataset([
-            FastaDataset(file_path)
+            FastaDataset(file_path, global_rank, world_size)
             for file_path in Path(valid_dir).glob("*.fasta")])
-        
+
         valid_loader = DataLoader(validset,
                                   batch_size=batch_size,
                                   num_workers=num_workers,
                                   collate_fn=collate_fn,
-                                  pin_memory=True,
+                                  pin_memory=pin_memory,
                                   sampler=None)
     test_loader = None
     if test_dir and os.path.exists(test_dir):
         testset = ChainDataset(
-            FastaDataset(file_path)
+            FastaDataset(file_path, global_rank, world_size)
             for file_path in Path(test_dir).glob("*.fasta"))
-        
+
         test_loader = DataLoader(testset,
                                  batch_size=batch_size,
                                  num_workers=num_workers,
                                  collate_fn=collate_fn,
-                                  pin_memory=True,
-                                  sampler=None)
+                                 pin_memory=pin_memory,
+                                 sampler=None)
 
     dataset_loader = {
         "train": train_loader,

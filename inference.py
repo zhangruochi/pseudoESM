@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Thu Jul 21 2022
+# Last Modified: Fri Jul 22 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -47,6 +47,7 @@ import mlflow
 import os
 import sys
 import torch.nn.functional as F
+import torch
 from omegaconf import OmegaConf
 from pathlib import Path
 from pseudoESM.esm.data import Alphabet
@@ -70,26 +71,26 @@ def load_model(cfg):
 
 
 
-
 if __name__ == "__main__":
-    cfg = OmegaConf.load(os.path.join(root_dir, "train_conf.yaml"))
+    cfg = OmegaConf.load(os.path.join(root_dir, "inference_conf.yaml"))
     orig_cwd = os.path.dirname(__file__)
+
+    device = torch.device("cuda:{}".format(cfg.inference.device_ids[0]
+                                        ) if torch.cuda.is_available()
+                        and len(cfg.inference.device_ids) > 0 else "cpu")
     
     model = load_model(cfg)
     tokenizer = Alphabet.from_architecture("protein_bert_base")
     collate_fn = DataCollector(tokenizer)
-    device = get_device(cfg)
     model.to(device)
     dataloader = make_loaders(collate_fn,
-                        test_dir=os.path.join(orig_cwd, cfg.data.test_dir),
-                        batch_size=cfg.train.batch_size,
-                        num_workers=cfg.train.num_workers)["test"]
+                        test_dir=os.path.join(orig_cwd, cfg.inference.test_dir),
+                        batch_size=cfg.inference.batch_size,
+                        num_workers=cfg.inference.num_workers)["test"]
 
-    
     evaluetor = Evaluator(model, dataloader, LossFunc(), device, cfg)
     test_metrics = evaluetor.run()
-    loss = test_metrics["test_loss"]
-    print("ECE: {}".format(np.exp(loss)))
 
+    print(test_metrics)
 
     # ECE: 15.462533462714758

@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Thu Jul 21 2022
+# Last Modified: Sat Jul 23 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -51,6 +51,7 @@ from torch.optim import AdamW
 from transformers import get_linear_schedule_with_warmup
 from pseudoESM.loader.utils import make_loaders, DataCollector
 from pseudoESM.esm.data import Alphabet
+from pseudoESM.utils.utils import fix_random_seed
 from pseudoESM.esm.model import ProteinBertModel
 from pseudoESM.std_logger import Logger
 from pseudoESM.utils.utils import get_device, load_weights
@@ -58,38 +59,41 @@ from pseudoESM.trainer import Trainer
 from pseudoESM.loss import LossFunc
 from pseudoESM.evaluator import Evaluator
 import mlflow
-import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import argparse
 from omegaconf import OmegaConf
-
-#
-parser = argparse.ArgumentParser(description='Train a recognizer')
-parser.add_argument('--local_rank', type=int, default=0)
-args = parser.parse_args()
+from omegaconf import DictConfig
+import torch.distributed as dist
+from pseudoESM.distribution import setup_multinodes, cleanup_multinodes
 
 
-def main():
-    orig_cwd = os.path.dirname(os.path.abspath(__file__))
-    cfg_path = os.path.join(orig_cwd,"train_conf.yaml")
-    cfg = OmegaConf.load(cfg_path)
-    # fix random seed
-    random.seed(cfg.train.random_seed)
-    torch.manual_seed(cfg.train.random_seed)
-    np.random.seed(cfg.train.random_seed)
 
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(cfg.train.random_seed)
+@hydra.main(config_path="configs",config_name="train.yaml")
+def main(cfg: DictConfig):
 
-    #set up distributed device
-    local_rank = int(args.local_rank)
-    if 'LOCAL_RANK' not in os.environ:
-        os.environ['LOCAL_RANK'] = str(args.local_rank)
-    rank = int(os.environ["RANK"])
-    torch.cuda.set_device(rank % torch.cuda.device_count())
-    dist.init_process_group(backend="nccl")
-    device = torch.device("cuda", local_rank)
-    print(f"[init] == local rank: {local_rank}, global rank: {rank} ==")
+    orig_cwd = hydra.utils.get_original_cwd()
+    global_rank = 0
+    local_rank = 0
+    world_size = 0
+    
+    if cfg.mode.gpu:
+        local_rank = int(os.environ["LOCAL_RANK"])
+        global_rank = int(os.environ['RANK'])
+        random_seed = cfg.train.random_seed + local_rank
+    else:
+        random_seed = cfg.train.random_seed
+
+    fix_random_seed(random_seed, cuda_deterministic=True)
+
+    if cfg.mode.gpu:
+        setup_multinodes(local_rank)
+        world_size = dist.get_world_size()
+        Logger.info("world size:{}".format(world_size))
+
+    if cfg.mode.gpu:
+        device = torch.device("cuda", local_rank)
+    else:
+        device = get_device(cfg)
 
     tokenizer = Alphabet.from_architecture("protein_bert_base")
     collate_fn = DataCollector(tokenizer,
@@ -99,6 +103,8 @@ def main():
 
     #-------------------- load dataset --------------------
     dataloaders = make_loaders(collate_fn,
+                               global_rank,
+                               world_size,
                                train_dir=os.path.join(orig_cwd,
                                                       cfg.data.train_dir),
                                valid_dir=os.path.join(orig_cwd,
@@ -106,6 +112,7 @@ def main():
                                test_dir=os.path.join(orig_cwd,
                                                      cfg.data.test_dir),
                                batch_size=cfg.train.batch_size,
+                               pin_memory=cfg.train.pin_memory,
                                num_workers=cfg.train.num_workers)
 
     # -------------------- load model --------------------
@@ -114,7 +121,12 @@ def main():
     # DistributedDataParallel
     model.to(device)
     Logger.info("model arch:{}".format(model))
-    model = DDP(model, device_ids=[local_rank], output_device=local_rank,find_unused_parameters=True)
+
+    if cfg.mode.gpu:
+        model = DDP(model,
+                    device_ids=[local_rank],
+                    output_device=local_rank,
+                    find_unused_parameters=True)
 
     num_training_steps = cfg.train.num_epoch * cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
     warmup_steps = int(cfg.train.warmup_steps_ratio * num_training_steps)
@@ -180,6 +192,9 @@ def main():
         mlflow.log_metric("test/{}".format(metric_name), metric_v, step=1)
 
     Logger.info("finished evaluating......")
+
+
+    cleanup_multinodes()
 
 
 if __name__ == "__main__":

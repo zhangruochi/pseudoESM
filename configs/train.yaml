@@ -1,3 +1,6 @@
+mode:
+  gpu: true
+
 model:
   protein_bert_base:
     arch: protein_bert_base
@@ -16,9 +19,8 @@ train:
   amp: true
   random_seed: 7
   num_epoch: 10
-  batch_size: 72
-  num_workers: 16
-  device_ids: [0,1,2]
+  batch_size: 8
+  num_workers: 2
   warmup_steps_ratio: 0.05
   weight_decay: 0
   learning_rate: 1e-4
@@ -26,6 +28,8 @@ train:
   gradient_accumulation_steps: 12
   max_grad_norm: 5
   eval_per_steps: 5000
+  pin_memory: False
+  device_ids: []
 
 data:
   total_train_num: 2000000
@@ -50,7 +54,12 @@ logger:
 
 
 inference:
-  model_path: "/data/zhangruochi/projects/pseudoESM/pretrained_model/model_step_1_f1_0.203"
+  test_dir:  "./data/test"
+  total_test_num: 50000
+  device_ids: [0]
+  batch_size: 32
+  num_workers: 1
+  model_path: "./pretrained_model/model_step_50_f1_0.223"
 
 other:
   debug: False
