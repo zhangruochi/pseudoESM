@@ -1,4 +1,4 @@
-CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun \
+WORLD_SIZE=4,CUDA_VISIBLE_DEVICES=0 torchrun \
                 --nproc_per_node=4 \
                 --nnodes=1          \
                 --node_rank=0       \

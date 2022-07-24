@@ -67,11 +67,6 @@ import torch.distributed as dist
 from pseudoESM.distribution import setup_multinodes, cleanup_multinodes
 
 
-os.environ['NCCL_DEBUG']='INFO'
-os.environ['NCCL_SHM_DISABLE'] = '1'
-os.environ["NCCL_SOCKET_IFNAME"]="eno1"
-
-
 @hydra.main(config_path="configs",config_name="train.yaml")
 def main(cfg: DictConfig):
 
@@ -83,6 +78,10 @@ def main(cfg: DictConfig):
     if cfg.mode.gpu:
         local_rank = int(os.environ["LOCAL_RANK"])
         global_rank = int(os.environ['RANK'])
+        world_size = int(os.environ['WORLD_SIZE'])
+        os.environ['NCCL_DEBUG']='INFO'
+        os.environ['NCCL_SHM_DISABLE'] = '1'
+        os.environ["NCCL_SOCKET_IFNAME"]="eno1"
         random_seed = cfg.train.random_seed + local_rank
     else:
         random_seed = cfg.train.random_seed
@@ -90,11 +89,7 @@ def main(cfg: DictConfig):
     fix_random_seed(random_seed, cuda_deterministic=True)
 
     if cfg.mode.gpu:
-        world_size = cfg.distribution.world_size
         setup_multinodes(local_rank, world_size)
-
-        if global_rank == 0:
-            Logger.info("world size:{}".format(world_size))
 
     if cfg.mode.gpu:
         device = torch.device("cuda", local_rank)
