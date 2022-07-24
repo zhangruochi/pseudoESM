@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sat Jul 23 2022
+# Last Modified: Sun Jul 24 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -67,6 +67,10 @@ import torch.distributed as dist
 from pseudoESM.distribution import setup_multinodes, cleanup_multinodes
 
 
+os.environ['NCCL_DEBUG']='INFO'
+os.environ['NCCL_SHM_DISABLE'] = '1'
+os.environ["NCCL_SOCKET_IFNAME"]="eno1"
+
 
 @hydra.main(config_path="configs",config_name="train.yaml")
 def main(cfg: DictConfig):
@@ -86,8 +90,8 @@ def main(cfg: DictConfig):
     fix_random_seed(random_seed, cuda_deterministic=True)
 
     if cfg.mode.gpu:
-        setup_multinodes(local_rank)
-        world_size = dist.get_world_size()
+        world_size = cfg.distribution.world_size
+        setup_multinodes(local_rank, world_size)
 
         if global_rank == 0:
             Logger.info("world size:{}".format(world_size))
@@ -135,6 +139,7 @@ def main(cfg: DictConfig):
 
     # -------------------- load optimizer --------------------
     num_training_steps = cfg.train.num_epoch * cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
+
     if cfg.mode.gpu:
         num_training_steps = num_training_steps // world_size
 

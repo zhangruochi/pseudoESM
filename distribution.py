@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sat Jul 23 2022
+# Last Modified: Sun Jul 24 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -41,11 +41,24 @@ import torch
 from pseudoESM.std_logger import Logger
 
 
-def setup_multinodes(local_rank):
+def setup_multinodes(local_rank, world_size):
 
     torch.cuda.set_device(local_rank)
     # initialize the process group
-    dist.init_process_group("nccl", init_method='env://', rank=local_rank)
+    ip = os.environ["MASTER_ADDR"]
+    port = os.environ["MASTER_PORT"]
+
+
+    Logger.info("init_address: {}:{} | world_size: {}".format(ip, port, world_size))
+
+
+    dist.init_process_group("nccl",
+                            init_method='tcp://{}:{}'.format(ip, port),
+                            rank=int(os.environ['RANK']),
+                            world_size=world_size)
+
+    # torch.multiprocessing.set_sharing_strategy("file_system")
+
     Logger.info(f"[init] == local rank: {local_rank}, global rank: {os.environ['RANK']} ==")
 
 

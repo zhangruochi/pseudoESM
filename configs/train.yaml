@@ -15,6 +15,9 @@ model:
     mlm: true
     mlm_probability: 0.15
 
+distribution:
+  world_size: 4
+
 train:
   amp: true
   random_seed: 7
