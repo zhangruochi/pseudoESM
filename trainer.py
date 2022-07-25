@@ -99,9 +99,9 @@ class Trainer(object):
             loss = acc = f1 = 0
 
             for step, data in tqdm(
-                    enumerate(self.dataloaders["train"]),
+                    enumerate(self.dataloaders["valid"]),
                     total=total_eval_step,
-                    docs="evaluating | loss: {}, acc: {} | f1: {}".format(
+                    desc="evaluating | loss: {}, acc: {} | f1: {}".format(
                         loss, acc, f1)):
 
                 batch = tuple(t.to(self.device) for t in data)
@@ -144,7 +144,7 @@ class Trainer(object):
 
             self.net.train()
 
-            for _, data in enumerate(self.dataloaders["valid"]):
+            for _, data in enumerate(self.dataloaders["train"]):
 
                 batch = tuple(t.to(self.device) for t in data)
                 batch_ids, true_labels = batch
