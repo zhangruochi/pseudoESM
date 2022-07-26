@@ -7,8 +7,8 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Fri Jul 22 2022
-# Modified By: Ruochi Zhang
+# Last Modified: Tue Jul 26 2022
+# Modified By: Qiong Zhou
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
 #
@@ -72,7 +72,7 @@ def load_model(cfg):
 
 
 if __name__ == "__main__":
-    cfg = OmegaConf.load(os.path.join(root_dir, "inference_conf.yaml"))
+    cfg = OmegaConf.load(os.path.join(root_dir, "configs/inference.yaml"))
     orig_cwd = os.path.dirname(__file__)
 
     device = torch.device("cuda:{}".format(cfg.inference.device_ids[0]
