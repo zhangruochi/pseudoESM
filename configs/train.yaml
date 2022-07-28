@@ -3,10 +3,10 @@ mode:
 
 model:
   protein_bert_base:
-    arch: protein_bert_base
+    arch: msa_transformer
     embed_dim: 768
     max_positions: 512
-    layers: 6
+    layers: 12
     ffn_embed_dim: 3072
     attention_heads: 12
     final_bias: True
@@ -19,7 +19,7 @@ train:
   amp: true
   random_seed: 7
   num_epoch: 10
-  batch_size: 12
+  batch_size: 4
   num_workers: 4
   warmup_steps_ratio: 0.05
   weight_decay: 0
