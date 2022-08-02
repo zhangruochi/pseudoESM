@@ -19,7 +19,7 @@ train:
   amp: true
   random_seed: 7
   num_epoch: 10
-  batch_size: 4
+  batch_size: 6
   num_workers: 4
   warmup_steps_ratio: 0.05
   weight_decay: 0
@@ -32,9 +32,9 @@ train:
   device_ids: []
 
 data:
-  total_train_num: 2000000
-  total_valid_num: 50000
-  total_test_num: 50000
+  total_train_num: 50000000
+  total_valid_num: 500000
+  total_test_num: 500000
   train_dir: "./data/train"
   valid_dir: "./data/eval"
   test_dir: "./data/test"
@@ -48,7 +48,7 @@ logger:
     AWS_ACCESS_KEY_ID: root
     AWS_SECRET_ACCESS_KEY: rootroot
     MLFLOW_S3_ENDPOINT_URL: http://192.168.1.232:6000
-    MLFLOW_TRACKING_URI: http://192.168.1.232:7000
+    MLFLOW_TRACKING_URI: http://192.168.1.232:6006
     MLFLOW_EXPERIMENT_NAME: "pseudo_esm"
     REGISTERED_MODEL_NAME: "pseudo_esm"
 

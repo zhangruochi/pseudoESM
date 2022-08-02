@@ -51,7 +51,7 @@ def setup_multinodes(local_rank, world_size):
     Logger.info("init_address: tcp://{}:{} | world_size: {}".format(ip, port, world_size))
 
 
-    dist.init_process_group("nccl",
+    dist.init_process_group("gloo",
                             init_method='tcp://{}:{}'.format(ip, port),
                             rank=int(os.environ['RANK']),
                             world_size=world_size)

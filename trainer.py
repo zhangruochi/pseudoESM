@@ -7,8 +7,8 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sat Jul 23 2022
-# Modified By: Ruochi Zhang
+# Last Modified: Fri Jul 29 2022
+# Modified By: Qiong Zhou
 # -----
 # Copyright (c) 2021 Bodkin World Domination Enterprises
 #
@@ -239,18 +239,18 @@ class Trainer(object):
                             "model_step_{}_f1_{}".format(
                                 self.global_valid_step,
                                 round(valid_metrics["valid_f1"], 3)))
+                        if self.global_rank == 0:
+                            if self.best_model_path.exists():
+                                shutil.rmtree(self.best_model_path)
 
-                        if self.best_model_path.exists():
-                            shutil.rmtree(self.best_model_path)
-
-                        if self.cfg.logger.log:
-                            mlflow.pytorch.save_model(
-                                (self.net.module
-                                if is_parallel(self.net) else self.net),
-                                self.best_model_path,
-                                code_paths=[
-                                    os.path.join(self.root_level_dir, "esm")
-                                ])
+                            if self.cfg.logger.log:
+                                mlflow.pytorch.save_model(
+                                    (self.net.module
+                                    if is_parallel(self.net) else self.net),
+                                    self.best_model_path,
+                                    code_paths=[
+                                        os.path.join(self.root_level_dir, "esm")
+                                    ])
 
                 self.global_train_step += 1
 

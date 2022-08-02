@@ -81,7 +81,7 @@ def main(cfg: DictConfig):
         world_size = int(os.environ['WORLD_SIZE'])
         os.environ['NCCL_DEBUG']='INFO'
         os.environ['NCCL_SHM_DISABLE'] = '1'
-        os.environ["NCCL_SOCKET_IFNAME"]="eno1"
+        os.environ["GLOO_SOCKET_IFNAME"]="eth1"
         random_seed = cfg.train.random_seed + local_rank
     else:
         random_seed = cfg.train.random_seed
@@ -205,8 +205,9 @@ def main(cfg: DictConfig):
             test_metrics["test_loss"], test_metrics["test_acc"],
             test_metrics["test_f1"]))
 
-    for metric_name, metric_v in test_metrics.items():
-        mlflow.log_metric("test/{}".format(metric_name), metric_v, step=1)
+    if global_rank == 0:
+        for metric_name, metric_v in test_metrics.items():
+            mlflow.log_metric("test/{}".format(metric_name), metric_v, step=1)
 
     if global_rank == 0:
         Logger.info("finished evaluating......")

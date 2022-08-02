@@ -52,6 +52,7 @@ from omegaconf import OmegaConf
 from pathlib import Path
 from pseudoESM.esm.data import Alphabet
 from pseudoESM.utils.utils import get_device
+from pseudoESM.esm.model import ProteinBertModel
 
 
 root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -70,6 +71,9 @@ def load_model(cfg):
     return model
 
 
+def init_model(train_cfg,tokenizer):
+    model = ProteinBertModel(train_cfg.model.protein_bert_base, tokenizer)
+    return model
 
 if __name__ == "__main__":
     cfg = OmegaConf.load(os.path.join(root_dir, "configs/inference.yaml"))
@@ -84,6 +88,8 @@ if __name__ == "__main__":
     collate_fn = DataCollector(tokenizer)
     model.to(device)
     dataloader = make_loaders(collate_fn,
+                                global_rank = 0,
+                                world_size=0,
                         test_dir=os.path.join(orig_cwd, cfg.inference.test_dir),
                         batch_size=cfg.inference.batch_size,
                         num_workers=cfg.inference.num_workers)["test"]
