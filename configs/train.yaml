@@ -61,6 +61,6 @@ inference:
   model_path: "./pretrained_model/model_step_50_f1_0.223"
 
 other:
-  debug: True
+  debug: False
   debug_step: 5
 
