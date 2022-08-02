@@ -21,20 +21,20 @@ train:
   num_epoch: 10
   batch_size: 6
   num_workers: 4
-  warmup_steps_ratio: 0.05
   weight_decay: 0
+  lr_scheduler:
+    T_0: 10000
+    T_mult: 2
+    eta_min: 5e-8
   learning_rate: 1e-4
   adam_epsilon: 1e-8
   gradient_accumulation_steps: 12
-  max_grad_norm: 5
+  max_grad_norm: 12
   eval_per_steps: 5000
   pin_memory: False
   device_ids: []
 
 data:
-  total_train_num: 50000000
-  total_valid_num: 500000
-  total_test_num: 500000
   train_dir: "./data/train"
   valid_dir: "./data/eval"
   test_dir: "./data/test"
@@ -42,7 +42,7 @@ data:
 logger:
   log: True
   log_dir: "outputs"
-  log_per_steps: 24
+  log_per_steps: 100
   final_artifact_path: final
   mlflow:
     AWS_ACCESS_KEY_ID: root
@@ -55,13 +55,12 @@ logger:
 
 inference:
   test_dir:  "./data/test"
-  total_test_num: 50000
   device_ids: [0]
   batch_size: 32
   num_workers: 1
   model_path: "./pretrained_model/model_step_50_f1_0.223"
 
 other:
-  debug: False
+  debug: True
   debug_step: 5
 

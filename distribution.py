@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sun Jul 24 2022
+# Last Modified: Tue Aug 02 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -49,7 +49,6 @@ def setup_multinodes(local_rank, world_size):
     port = os.environ["MASTER_PORT"]
 
     Logger.info("init_address: tcp://{}:{} | world_size: {}".format(ip, port, world_size))
-
 
     dist.init_process_group("gloo",
                             init_method='tcp://{}:{}'.format(ip, port),

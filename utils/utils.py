@@ -62,10 +62,9 @@ def load_weights(model, best_model_path, device):
 
     best_model_path = best_model_path / "data/model.pth"
 
-    print(best_model_path / "data/model.pth")
-
     if is_parallel(model):
         model = model.module
+
 
     model_dict = model.state_dict()
 

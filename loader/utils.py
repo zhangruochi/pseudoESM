@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sat Jul 23 2022
+# Last Modified: Tue Aug 02 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -107,7 +107,7 @@ def make_loaders(collate_fn,
     train_loader = None
     if train_dir and os.path.exists(train_dir):
         trainset = ChainDataset([
-            FastaDataset(file_path, global_rank, world_size)
+            FastaDataset(file_path, global_rank, world_size, train = True)
             for file_path in Path(train_dir).glob("*.fasta")
         ])
 
@@ -122,7 +122,7 @@ def make_loaders(collate_fn,
     valid_loader = None
     if valid_dir and os.path.exists(valid_dir):
         validset = ChainDataset([
-            FastaDataset(file_path, global_rank, world_size)
+            FastaDataset(file_path, global_rank, world_size, train = False)
             for file_path in Path(valid_dir).glob("*.fasta")])
 
         valid_loader = DataLoader(validset,
@@ -134,7 +134,7 @@ def make_loaders(collate_fn,
     test_loader = None
     if test_dir and os.path.exists(test_dir):
         testset = ChainDataset(
-            FastaDataset(file_path, global_rank, world_size)
+            FastaDataset(file_path, global_rank, world_size, train = False)
             for file_path in Path(test_dir).glob("*.fasta"))
 
         test_loader = DataLoader(testset,

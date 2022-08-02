@@ -54,13 +54,19 @@ def read_alignment_lines(
 
 class FastaDataset(IterableDataset):
 
-    def __init__(self, fasta_file_path, global_rank, world_size):
+    def __init__(self, fasta_file_path, global_rank, world_size, train = True):
         super(FastaDataset).__init__()
         self.fasta_file_path = fasta_file_path
         self.global_rank = global_rank
         self.world_size = world_size
         self.start, self.end = self._get_file_info(fasta_file_path)
+
         self.data_generator = read_fasta(str(self.fasta_file_path))
+        self.train = train
+
+        # if not self.train:
+        #     self.global_rank = 0
+        #     self.world_size = 0
 
     def __len__(self):
         return self.end - self.start
@@ -72,7 +78,6 @@ class FastaDataset(IterableDataset):
 
         return start, end
 
-
     def _sample_generator(self, start, end):
         for i, line in enumerate(self.data_generator):
             if i < start:
@@ -80,7 +85,6 @@ class FastaDataset(IterableDataset):
             if i >= end:
                 return StopIteration()
             yield line
-
 
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
@@ -106,6 +110,7 @@ class FastaDataset(IterableDataset):
             iter_start = self.start + worker_id * per_worker + self.global_rank * per_rank
             iter_end = min(iter_start + per_worker, self.end)
 
+        # workers
         sample_iterator = self._sample_generator(iter_start, iter_end)
 
         return sample_iterator

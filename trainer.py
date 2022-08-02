@@ -7,8 +7,8 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Fri Jul 29 2022
-# Modified By: Qiong Zhou
+# Last Modified: Tue Aug 02 2022
+# Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2021 Bodkin World Domination Enterprises
 #
@@ -72,7 +72,7 @@ class Trainer(object):
         self.global_valid_step = 0
 
         ## save checkpoint
-        self.best_f1 = 0
+        self.best_ece = float("inf")
         self.best_model_path = Path(".")
 
         self.root_level_dir = os.path.join(
@@ -88,19 +88,12 @@ class Trainer(object):
         accs = []
         f1s = []
 
-        total_eval_step = self.cfg.data.total_valid_num // (
-            self.cfg.train.batch_size)
-
-        if self.world_size != 0:
-            total_eval_step = total_eval_step // self.world_size
-
         self.net.eval()
         with torch.no_grad():
             loss = acc = f1 = 0
 
             for step, data in tqdm(
                     enumerate(self.dataloaders["valid"]),
-                    total=total_eval_step,
                     desc="evaluating | loss: {}, acc: {} | f1: {}".format(
                         loss, acc, f1)):
 
@@ -124,11 +117,13 @@ class Trainer(object):
         valid_loss = np.mean(losses)
         valid_acc = np.mean(accs)
         valid_f1 = np.mean(f1)
+        valid_ece = np.exp(valid_loss)
 
         return {
             "valid_loss": valid_loss,
             "valid_acc": valid_acc,
-            "valid_f1": valid_f1
+            "valid_f1": valid_f1,
+            "valid_ece": valid_ece
         }
 
     def run(self):
@@ -184,7 +179,6 @@ class Trainer(object):
 
                     self.scheduler.step()
 
-
                 ## logging
 
                 if (self.global_train_step + 1
@@ -211,17 +205,18 @@ class Trainer(object):
                 if (self.global_train_step +
                         1) % self.cfg.train.eval_per_steps == 0:
 
-                    valid_metrics = self.evaluate()
-
                     if self.global_rank == 0:
+                        valid_metrics = self.evaluate()
 
                         Logger.info(
-                            "valid | epoch: {:d} | step: {:d} | loss: {:.4f} | acc: {:.4f} | f1: {:.4f}"
+                            "valid | epoch: {:d} | step: {:d} | loss: {:.4f} | acc: {:.4f} | f1: {:.4f} | ece: {:.4f}"
                             .format(epoch,
                                     self.global_valid_step,
                                     valid_metrics["valid_loss"],
                                     valid_metrics["valid_acc"],
-                                    valid_metrics["valid_f1"]))
+                                    valid_metrics["valid_f1"],
+                                    valid_metrics["valid_ece"]
+                                    ))
 
                         if self.cfg.logger.log:
                             for metric_name, metric_v in valid_metrics.items():
@@ -229,21 +224,22 @@ class Trainer(object):
                                                 metric_v,
                                                 step=self.global_valid_step)
 
-                    self.global_valid_step += 1
-                    self.net.train()
+                        self.global_valid_step += 1
+                        self.net.train()
 
-                    if valid_metrics["valid_f1"] >= self.best_f1:
-                        self.best_f1 = valid_metrics["valid_f1"]
-
-                        self.best_model_path = Path(
-                            "model_step_{}_f1_{}".format(
-                                self.global_valid_step,
-                                round(valid_metrics["valid_f1"], 3)))
-                        if self.global_rank == 0:
-                            if self.best_model_path.exists():
-                                shutil.rmtree(self.best_model_path)
+                        if valid_metrics["valid_ece"] < self.best_ece:
+                            self.best_ece = valid_metrics["valid_ece"]
 
                             if self.cfg.logger.log:
+
+                                self.best_model_path = Path(
+                                    "model_step_{}_ece_{}".format(
+                                        self.global_valid_step,
+                                        round(self.best_ece, 3)))
+
+                                if self.best_model_path.exists():
+                                    shutil.rmtree(self.best_model_path)
+
                                 mlflow.pytorch.save_model(
                                     (self.net.module
                                     if is_parallel(self.net) else self.net),

@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Sun Jul 24 2022
+# Last Modified: Tue Aug 02 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -81,7 +81,6 @@ def main(cfg: DictConfig):
         world_size = int(os.environ['WORLD_SIZE'])
         os.environ['NCCL_DEBUG']='INFO'
         os.environ['NCCL_SHM_DISABLE'] = '1'
-        os.environ["GLOO_SOCKET_IFNAME"]="eth1"
         random_seed = cfg.train.random_seed + local_rank
     else:
         random_seed = cfg.train.random_seed
@@ -133,20 +132,17 @@ def main(cfg: DictConfig):
 
 
     # -------------------- load optimizer --------------------
-    num_training_steps = cfg.train.num_epoch * cfg.data.total_train_num // cfg.train.batch_size // cfg.train.gradient_accumulation_steps
-
-    if cfg.mode.gpu:
-        num_training_steps = num_training_steps // world_size
-
-    warmup_steps = int(cfg.train.warmup_steps_ratio * num_training_steps)
-
     optimizer = AdamW(model.parameters(),
                       lr=cfg.train.learning_rate,
                       eps=cfg.train.adam_epsilon)
 
-    if global_rank == 0:
-        Logger.info("total warmup steps: {}".format(warmup_steps))
-
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer,
+        T_0=cfg.train.lr_scheduler.T_0,
+        T_mult=cfg.train.lr_scheduler.T_mult,
+        eta_min=cfg.train.lr_scheduler.eta_min,
+        last_epoch=-1,
+        verbose=False)
 
     # -------------------- load loss function --------------------
     criterion = LossFunc()
@@ -162,12 +158,6 @@ def main(cfg: DictConfig):
                                                     gamma=0.99,
                                                     last_epoch=-1,
                                                     verbose=False)
-    else:
-        scheduler = get_linear_schedule_with_warmup(
-            optimizer,
-            num_warmup_steps=warmup_steps,
-            num_training_steps=num_training_steps,
-            last_epoch=-1)
 
     trainer = Trainer(model, criterion, dataloaders, optimizer, scheduler,
                       device, global_rank, world_size, cfg)
@@ -185,31 +175,30 @@ def main(cfg: DictConfig):
 
     if global_rank == 0:
         Logger.info("start training......")
-    trainer.run()
+
+    # trainer.run()
 
     if global_rank == 0:
         Logger.info("finished training......")
 
     if global_rank == 0:
         Logger.info("loading best weights......")
-    load_weights(model, trainer.best_model_path, device)
 
+
+    evaluetor = Evaluator(model, dataloaders["test"], criterion, device, cfg)
+    test_metrics = evaluetor.run()
+        
     if global_rank == 0:
         Logger.info("start evaluating......")
-    evaluetor = Evaluator(model, dataloaders["test"], criterion, device, cfg)
 
-    test_metrics = evaluetor.run()
-
-    if global_rank == 0:
+        # model = load_weights(model, trainer.best_model_path, device)
         Logger.info("test | loss: {:.4f} | acc: {:.4f} | f1: {:.4f}".format(
             test_metrics["test_loss"], test_metrics["test_acc"],
             test_metrics["test_f1"]))
 
-    if global_rank == 0:
         for metric_name, metric_v in test_metrics.items():
             mlflow.log_metric("test/{}".format(metric_name), metric_v, step=1)
 
-    if global_rank == 0:
         Logger.info("finished evaluating......")
 
 

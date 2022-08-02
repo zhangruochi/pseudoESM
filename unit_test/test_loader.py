@@ -15,17 +15,17 @@ import hydra
 from omegaconf import OmegaConf
 from tqdm import tqdm
 
-def test_generator():
-    i = 0
-    for _ in tqdm(read_fasta(
-            path=
-            "../data/eval/50thousand.fasta")):
-        i += 1
+# def test_generator():
+#     i = 0
+#     for _ in tqdm(read_fasta(
+#             path=
+#             "../data/eval/50thousand.fasta")):
+#         i += 1
 
-        # if i % 100 == 0:
-        #     print(i)
+#         # if i % 100 == 0:
+#         #     print(i)
 
-    assert i == 50000
+#     assert i == 50000
 
 def test_loader():
 
@@ -45,9 +45,8 @@ def test_loader():
                                batch_size=cfg.train.batch_size,
                                num_workers=cfg.train.num_workers)
 
-    line = next(iter(dataloaders["test"]))
-
-    print(line[0].shape)
+    print(len(dataloaders["test"]))
+    print(len(dataloaders["test"]))
 
     for i, line in enumerate(dataloaders["test"]):
         if i % 100 == 0:

@@ -7,7 +7,7 @@
 # Author: Ruochi Zhang
 # Email: zrc720@gmail.com
 # -----
-# Last Modified: Fri Jul 22 2022
+# Last Modified: Tue Aug 02 2022
 # Modified By: Ruochi Zhang
 # -----
 # Copyright (c) 2022 Bodkin World Domination Enterprises
@@ -39,6 +39,10 @@ import torch
 from .loss import compute_metrics
 import numpy as np
 from tqdm import tqdm
+import os
+
+from torch.distributed import ReduceOp
+
 
 class Evaluator():
     def __init__(self, model, test_loader, criterion, device, cfg):
@@ -49,16 +53,15 @@ class Evaluator():
         self.cfg = cfg
 
     def run(self):
-        losses = []
-        accs = []
-        f1s = []
+        loss_list = []
+
+        logits_list = []
+        true_list = []
         self.model.eval()
         with torch.no_grad():
             loss = acc = f1 = 0
             for step, data in tqdm(
                     enumerate(self.test_loader),
-                    total=self.cfg.inference.total_test_num //
-                    self.cfg.inference.batch_size,
                     desc="evaluating | loss: {}, acc: {} | f1: {}".format(
                         loss, acc, f1)):
                 batch = tuple(t.to(self.device) for t in data)
@@ -67,23 +70,54 @@ class Evaluator():
                 # forward
                 pred_logits = self.model(batch_ids)['logits']
                 loss = self.criterion(pred_logits, true_labels).item()
-                metrics = compute_metrics(pred_logits, true_labels)
 
-                acc = metrics["acc"]
-                f1 = metrics["f1"]
+                logits_list.append(pred_logits)
+                true_list.append(true_labels)
+                loss_list.append(loss)
 
-                losses.append(loss)
-                accs.append(acc)
-                f1s.append(f1)
+                if step > 100:
+                    break
 
-        test_loss = np.mean(losses)
-        test_acc = np.mean(accs)
-        test_f1 = np.mean(f1s)
-        test_ece = np.exp(test_loss)
+
+        pred_logits = torch.concat(logits_list, dim=1)
+        true_labels = torch.concat(true_list, dim=1)
+
+        metrics = compute_metrics(pred_logits, true_labels)
+
+        test_loss = torch.tensor(np.mean(loss_list))
+        test_ece = torch.exp(test_loss)
+        test_acc = torch.tensor(metrics["acc"])
+        test_f1 = torch.tensor(metrics["f1"])
+
+
+        # print("RANK: {}: loss {}".format(int(os.environ['RANK']), test_loss))
+        # print("RANK: {}: ece {}".format(int(os.environ['RANK']), test_ece))
+        # print("RANK: {}: acc {}".format(int(os.environ['RANK']), test_acc))
+        # print("RANK: {}: f1 {}".format(int(os.environ['RANK']), test_f1))
+
+
+    
+        if self.cfg.mode.gpu:
+            torch.distributed.barrier()
+            torch.distributed.all_reduce(test_loss, op=ReduceOp.SUM)
+            torch.distributed.all_reduce(test_ece, op=ReduceOp.SUM)
+            torch.distributed.all_reduce(test_acc, op=ReduceOp.SUM)
+            torch.distributed.all_reduce(test_f1, op=ReduceOp.SUM)
+        
+            test_loss /= torch.distributed.get_world_size()
+            test_ece /= torch.distributed.get_world_size()
+            test_acc /= torch.distributed.get_world_size()
+            test_f1 /= torch.distributed.get_world_size()
+            
+
+        # print("RANK: {}: loss {}".format(int(os.environ['RANK']), test_loss))
+        # print("RANK: {}: ece {}".format(int(os.environ['RANK']), test_ece))
+        # print("RANK: {}: acc {}".format(int(os.environ['RANK']), test_acc))
+        # print("RANK: {}: f1 {}".format(int(os.environ['RANK']), test_f1))
 
         return {
-            "test_loss": test_loss,
-            "test_acc": test_acc,
-            "test_f1": test_f1,
-            "test_ece": test_ece,
+            "test_loss": test_loss.item(),
+            "test_acc": test_acc.item(),
+            "test_f1": test_f1.item(),
+            "test_ece": test_ece.item(),
         }
