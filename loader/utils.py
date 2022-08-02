@@ -117,6 +117,7 @@ def make_loaders(collate_fn,
                                   num_workers=num_workers,
                                   collate_fn=collate_fn,
                                   pin_memory=pin_memory,
+                                  drop_last=True,
                                   sampler=None)
 
     valid_loader = None
@@ -129,6 +130,7 @@ def make_loaders(collate_fn,
                                   batch_size=batch_size,
                                   num_workers=num_workers,
                                   collate_fn=collate_fn,
+                                  drop_last=True,
                                   pin_memory=pin_memory,
                                   sampler=None)
     test_loader = None
@@ -141,6 +143,7 @@ def make_loaders(collate_fn,
                                  batch_size=batch_size,
                                  num_workers=num_workers,
                                  collate_fn=collate_fn,
+                                 drop_last=True,
                                  pin_memory=pin_memory,
                                  sampler=None)
 

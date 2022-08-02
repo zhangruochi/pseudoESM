@@ -176,7 +176,7 @@ def main(cfg: DictConfig):
     if global_rank == 0:
         Logger.info("start training......")
 
-    # trainer.run()
+    trainer.run()
 
     if global_rank == 0:
         Logger.info("finished training......")

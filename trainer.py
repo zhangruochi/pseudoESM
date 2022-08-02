@@ -84,9 +84,9 @@ class Trainer(object):
 
 
     def evaluate(self):
-        losses = []
-        accs = []
-        f1s = []
+        loss_list = []
+        logits_list = []
+        true_list = []
 
         self.net.eval()
         with torch.no_grad():
@@ -104,26 +104,28 @@ class Trainer(object):
                                        need_head_weights=False,
                                        return_contacts=False)['logits']
                 loss = self.criterion(pred_logits, true_labels).item()
-                metrics = compute_metrics(pred_logits, true_labels)
-                acc = metrics["acc"]
-                f1 = metrics["f1"]
-                losses.append(loss)
-                accs.append(acc)
-                f1s.append(f1)
+                logits_list.append(pred_logits)
+                true_list.append(true_labels)
+                loss_list.append(loss)
 
                 if self.cfg.other.debug and step >= self.cfg.other.debug_step:
                     break
 
-        valid_loss = np.mean(losses)
-        valid_acc = np.mean(accs)
-        valid_f1 = np.mean(f1)
-        valid_ece = np.exp(valid_loss)
+        pred_logits = torch.concat(logits_list, dim=1)
+        true_labels = torch.concat(true_list, dim=1)
+
+        metrics = compute_metrics(pred_logits, true_labels)
+
+        valid_loss = torch.tensor(np.mean(loss_list))
+        valid_ece = torch.exp(valid_loss)
+        valid_acc = torch.tensor(metrics["acc"])
+        valid_f1 = torch.tensor(metrics["f1"])
 
         return {
-            "valid_loss": valid_loss,
-            "valid_acc": valid_acc,
-            "valid_f1": valid_f1,
-            "valid_ece": valid_ece
+            "valid_loss": valid_loss.item(),
+            "valid_acc": valid_acc.item(),
+            "valid_f1": valid_f1.item(),
+            "valid_ece": valid_ece.item()
         }
 
     def run(self):

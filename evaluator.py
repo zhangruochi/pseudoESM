@@ -54,7 +54,6 @@ class Evaluator():
 
     def run(self):
         loss_list = []
-
         logits_list = []
         true_list = []
         self.model.eval()
