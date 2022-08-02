@@ -75,10 +75,6 @@ class Evaluator():
                 true_list.append(true_labels)
                 loss_list.append(loss)
 
-                if step > 100:
-                    break
-
-
         pred_logits = torch.concat(logits_list, dim=1)
         true_labels = torch.concat(true_list, dim=1)
 
